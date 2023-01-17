@@ -1,0 +1,4 @@
+/aws.s3/*.iml
+/aws.s3/*.log
+/aws.s3/.idea/
+/aws.s3/target/
