@@ -7,7 +7,8 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 @Getter
 public class JobConfig {
-    public static final int CAPACITY = 1000;
+    public static final int CAPACITY = 50;
+    public static final int CONSUMER_CAPACITY = 200;
     public static final int THREAD_SLEEP_MAX = 1000;
     public static final int THREAD_SLEEP_MIN = 100;
     @Value("${file.path}")
@@ -20,6 +21,6 @@ public class JobConfig {
     String segmentDelimiter;
     @Value("${file.segmentIndexInFile:1}")
     int segmentIndexInFile;
-    @Value("${aerospike.maxThroughput:10}")
+    @Value("${aerospike.maxThroughput:30}")
     private int maxThroughput;
 }

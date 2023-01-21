@@ -40,12 +40,16 @@ public class AerospikeLoader extends Consumer<Product<Key, Operation[]>> {
         long startTime = System.currentTimeMillis();
         EventLoops eventLoops = client.getCluster().eventLoops;
 
-        //If exceedingThroughput() we should block
+        //Checking if we are exceeding configured throughput
+        //if so we either wait for the average time between
+        // the worst time a task take to complete and it's best
+        // or a minimun amount
         if (maxThroughput > 0 && exceedingThroughput()) {
             log.debug("Configured Throughput was exceeded:{}", maxThroughput);
             metrics.writeQueuedCount.incrementAndGet();
             do {
-                Thread.sleep(THREAD_SLEEP_MIN);
+                long sleepingTime = metrics.getTaskElapsedAverageTime();
+                Thread.sleep(sleepingTime == 0 ? THREAD_SLEEP_MIN : Math.min(sleepingTime, THREAD_SLEEP_MIN));
             } while (exceedingThroughput());
             metrics.writeQueuedCount.decrementAndGet();
         }
@@ -53,24 +57,33 @@ public class AerospikeLoader extends Consumer<Product<Key, Operation[]>> {
         int eventLoopIndex = -1;
         int maxAvailable = 0;
         int size = eventLoops.getSize();
+
         for (int i = 0; i < size; i++) {
+            //Now we are searching for a free event loop
+            //an improvement here is to randomly search from both end and begining
+            //so not all the first slots are filled first
             int available = throttles.getAvailable(i);
             if (maxAvailable > available) {
                 eventLoopIndex = i;
                 maxAvailable = available;
             }
         }
-        if (maxAvailable == 0) {
+
+        if (maxAvailable == 0) { //we didn't find a free event loop, search one randomly
             metrics.writeQueuedCount.incrementAndGet();
             eventLoopIndex = ThreadLocalRandom.current().nextInt(0, size);
             log.debug("None of the {} loops are available. Waiting on:{}. Pending:{}", size, eventLoopIndex, metrics.getPending());
         }
 
-        if (throttles.waitForSlot(eventLoopIndex, 1)) {
-            if (maxAvailable == 0)
+        if (throttles.waitForSlot(eventLoopIndex, 1)) { // if the loop has no space we will wait until is free. if not is assigned
+            if (maxAvailable == 0) //meaning we waited before continued, so we have to decrease the queued metric
                 metrics.writeQueuedCount.decrementAndGet();
             metrics.writeProcessingCount.incrementAndGet();
-            client.operate(eventLoops.get(eventLoopIndex), new AerospikeLoaderWriteListener(product, eventLoopIndex, startTime), client.writePolicyDefault, product.getA(), product.getB());
+
+
+            //Aerospike async operate command
+            AerospikeLoaderWriteListener listener = new AerospikeLoaderWriteListener(product, eventLoopIndex, startTime);
+            client.operate(eventLoops.get(eventLoopIndex), listener, client.writePolicyDefault, product.getA(), product.getB());
         }
     }
 
@@ -104,13 +117,13 @@ public class AerospikeLoader extends Consumer<Product<Key, Operation[]>> {
             this.startTime = startTime;
         }
 
+        // Write succeeded.
         @Override
         public void onSuccess(Key key, Record record) {
 
             throttles.addSlot(eventLoopIndex, 1);
             long endTime = System.currentTimeMillis();
             long time = endTime - startTime;
-            // Write succeeded.
             metrics.writeProcessingCount.decrementAndGet();
             metrics.writeCompletedCount.incrementAndGet();
             metrics.registerTime(time);
@@ -158,8 +171,8 @@ public class AerospikeLoader extends Consumer<Product<Key, Operation[]>> {
         private final long startTime;
 
         public void registerTime(long time) {
-            writeBestTime.getAndUpdate(l -> Math.min(l, time));
-            writeWorstTime.getAndUpdate(l -> Math.max(l, time));
+            writeBestTime.getAndAccumulate(time,Math::min);
+            writeWorstTime.getAndAccumulate(time, Math::max);
         }
 
         public long getCurrentThroughput() {
@@ -167,26 +180,35 @@ public class AerospikeLoader extends Consumer<Product<Key, Operation[]>> {
                     + this.writeQueuedCount.get()
                     + this.writeErrors.get()
                     + this.writeCompletedCount.get();
-            long timeLapse = System.currentTimeMillis() - this.startTime;
-            return timeLapse > 0L ? transactions / timeLapse : 0;
+            long elapsedTime = getElapsedTime();
+            return elapsedTime > 0L ? transactions / elapsedTime : 0;
+        }
+
+        public long getTaskElapsedAverageTime(){
+            return (writeBestTime.get() + writeWorstTime.get()) / 2;
         }
 
         public String getStats() {
-            long timeLapse = (System.currentTimeMillis() - this.startTime);
-            // Calculate transaction per second and store current count
-            double tps = 1000 * (this.writeCompletedCount.get() + this.writeErrors.get()) / (double) timeLapse;
+            // Elapsed time in ms
+            long elapsedTime = getElapsedTime();
+            // Transaction per second
+            double tps = 1000 * (this.writeCompletedCount.get() + this.writeErrors.get()) / (double) elapsedTime;
 
-            return String.format("StartedAt:%s duration:%f(s) processed=%d inProgress=%d queued=%d  " +
-                            "Write(throughput=%d/ms tps=%f/s bestTime:%d worstTime:%d) " +
-                            "Errors(total=%d, timeouts=%d, keyExists=%d, hotKeys=%d, deviceOverload=%d)",
-                    DATE_FORMAT.format(new Date(startTime)), ((double)timeLapse)/1000,
+            return String.format("StartedAt:%s (duration:%f(min) processed:%d inProgress:%d queued:%d) " +
+                            "Write(throughput:%d/ms tps:%f/s bestTime:%d worstTime:%d) " +
+                            "Errors(total:%d, timeouts:%d, keyExists:%d, hotKeys:%d, deviceOverload:%d)",
+                    DATE_FORMAT.format(new Date(startTime)), ((double) elapsedTime) / 60000,
                     this.writeCompletedCount.get(), this.writeProcessingCount.get(), this.writeQueuedCount.get(),
                     getCurrentThroughput(), tps, this.writeBestTime.get(), this.writeWorstTime.get(),
-                    this.writeErrors.get(), this.writeTimeouts.get(), this.writeKeyExists.get(), this.writeHotKey.get(), this.writeDeviceOverload.get());
+                    this.writeErrors.get(), this.writeTimeouts.get(), this.writeKeyExists.get(),
+                    this.writeHotKey.get(), this.writeDeviceOverload.get());
         }
 
         public long getPending() {
             return this.writeProcessingCount.get() + this.writeQueuedCount.get();
+        }
+        private long getElapsedTime() {
+            return System.currentTimeMillis() - this.startTime;
         }
     }
 }
