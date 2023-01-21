@@ -112,7 +112,7 @@ public class FileReaderProducer {
         }
 
         private void writeReport(String f) {
-            try (Writer wr = new FileWriter(file + ".error")) {
+            try (Writer wr = new FileWriter(file + ".error",true)) {
                 wr.write(f);
             } catch (IOException e) {//Sorry, nothing we can do about it.
                 log.warn("Cannot write report to \"{}.error\"", file, e);
