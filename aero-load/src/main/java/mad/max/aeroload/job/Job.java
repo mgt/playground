@@ -45,7 +45,7 @@ public class Job {
     public void run(long limit) {
         AerospikeLoader loader = new AerospikeLoader(jobProfile, client, throttles);
         loader.spinTask();
-        FileLineKeyOpProducer fileLineKeyOpProducer = new FileLineKeyOpProducer(jobProfile, loader);
+        FileLineKeyOpProducer fileLineKeyOpProducer = new FileLineKeyOpProducer( loader);
         StopWatch timeMeasure = new StopWatch();
         timeMeasure.start("Run job");
         FileReaderProducer fileReaderProducer =

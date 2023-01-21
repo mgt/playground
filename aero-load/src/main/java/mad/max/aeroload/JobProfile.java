@@ -4,7 +4,6 @@ import lombok.AllArgsConstructor;
 
 @AllArgsConstructor
 public class JobProfile {
-
     public static final int CAPACITY = 50;
     public static final int CONSUMER_CAPACITY = 200;
     public static final int THREAD_SLEEP_MAX = 1000;
@@ -18,7 +17,6 @@ public class JobProfile {
     public int getMaxQueuedElements() {
         return CONSUMER_CAPACITY;
     }
-
 
     public void busyWait() throws InterruptedException {
         Thread.sleep(THREAD_SLEEP_MAX);

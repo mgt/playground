@@ -24,7 +24,7 @@ public class FileReaderProducer {
     private final int segmentColumnIndexInFile;
     private final File file;
     private final boolean hasHeader;
-    private final Consumer<Product<String, String[]>> consumer;
+    private final Consumer<Product<String, String[]>> consumingTask;
     private JobProfile profile;
 
 
@@ -67,7 +67,7 @@ public class FileReaderProducer {
 
                 //Configuring handlers, they are going to be called async
                 Handling handling = new Handling(okCount, errorCount, totalTime, fileName, keyString, System.currentTimeMillis(), lastReadLineNumber);
-                consumer.consume(new Product<>(keyString, listString, handling::handleSuccess, handling::handleFail));
+                consumingTask.consume(new Product<>(keyString, listString, handling::handleSuccess, handling::handleFail));
                 lastReadLineNumber = br.getLineNumber();
             }
         } catch (Exception e) {

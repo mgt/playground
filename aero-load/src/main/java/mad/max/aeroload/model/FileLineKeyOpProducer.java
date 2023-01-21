@@ -6,23 +6,21 @@ import com.aerospike.client.cdt.ListOperation;
 import com.aerospike.client.cdt.ListOrder;
 import com.aerospike.client.cdt.ListPolicy;
 import com.aerospike.client.cdt.ListWriteFlags;
-import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import mad.max.aeroload.JobProfile;
 
 import java.util.Arrays;
 
 @Slf4j
-public class FileLineKeyOpProducer extends Consumer<Product<String, String[]>> {
+public class FileLineKeyOpProducer implements Consumer<Product<String, String[]>> {
     public static final ListPolicy POLICY = new ListPolicy(ListOrder.UNORDERED, ListWriteFlags.ADD_UNIQUE | ListWriteFlags.NO_FAIL);
     public static final String SET_NAME = "audience_targeting_segments";
     public static final String NAMESPACE = "tempcache";
     public static final String BIN_SEGMENT_NAME = "list";
-    private final Consumer<Product<Key, Operation[]>> consumer;
+    private final Consumer<Product<Key, Operation[]>> consumingTask;
 
-    public FileLineKeyOpProducer(JobProfile profile, Consumer<Product<Key, Operation[]>> consumer) {
-        super(profile);
-        this.consumer = consumer;
+    public FileLineKeyOpProducer(Consumer<Product<Key, Operation[]>> consumingTask) {
+        this.consumingTask = consumingTask;
     }
 
     public static Key getKey(String keyString) {
@@ -37,17 +35,13 @@ public class FileLineKeyOpProducer extends Consumer<Product<String, String[]>> {
     }
 
     @Override
-    protected void consume(Product<String, String[]> product) {
+    public void consume(Product<String, String[]> product) {
         try {
-            consumer.offer(new Product<>(getKey(product.getA()), getOperations(product.getB()),
+            consumingTask.consume(new Product<>(getKey(product.getA()), getOperations(product.getB()),
                     product.getSuccessHandler(), product.getFailureHandler()));
-        } catch (InterruptedException e) {
+        } catch (Exception e) {
             throw new RuntimeException(e);
         }
     }
 
-    @Override
-    protected void interruptedError() {
-
-    }
 }

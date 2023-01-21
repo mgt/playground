@@ -24,7 +24,6 @@ public class Config {
     @Value("${aerospike.ttl-days:1}")
     private Integer ttl;
 
-
     @Bean
     public JobProfile jobProfile( @Value("${aerospike.maxThroughput:30}") int maxThroughput) {
         return new JobProfile(maxThroughput);

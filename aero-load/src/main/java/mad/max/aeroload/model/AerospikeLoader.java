@@ -9,7 +9,6 @@ import com.aerospike.client.async.EventLoops;
 import com.aerospike.client.async.Throttles;
 import com.aerospike.client.listener.RecordListener;
 import lombok.RequiredArgsConstructor;
-import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import mad.max.aeroload.JobProfile;
 
@@ -21,7 +20,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
 @Slf4j
-public class AerospikeLoader extends Consumer<Product<Key, Operation[]>> {
+public class AerospikeLoader extends AsyncConsumingTask<Product<Key, Operation[]>> {
     private final AerospikeClient client;
     private final Throttles throttles;
     private final AerospikeLoadingMetrics metrics;
@@ -33,8 +32,7 @@ public class AerospikeLoader extends Consumer<Product<Key, Operation[]>> {
         this.metrics = new AerospikeLoadingMetrics(System.currentTimeMillis());
     }
 
-    @SneakyThrows
-    protected void consume(Product<Key, Operation[]> product) {
+    protected void offer(Product<Key, Operation[]> product) throws InterruptedException {
         long startTime = System.currentTimeMillis();
         EventLoops eventLoops = client.getCluster().eventLoops;
 
