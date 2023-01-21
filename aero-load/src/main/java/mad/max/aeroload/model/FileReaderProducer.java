@@ -37,6 +37,8 @@ public class FileReaderProducer {
         String fileName = file.getName();
         boolean fail = false;//in case there is an exception, will be used not to busy-wait
 
+        //Maybe we need to clean previous failure reports here
+
         try (LineNumberReader br = new LineNumberReader(new InputStreamReader(getInputStream(file), StandardCharsets.UTF_8))) {
 
             log.debug("Reading file: {} ", fileName);

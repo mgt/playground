@@ -24,7 +24,7 @@ public abstract class AsyncConsumingTask<T> extends SpinneableTask implements Co
             log.debug("Starting to consume");
             try {
                 T take = queue.take();
-                log.debug("consuming element");
+                log.trace("consuming element");
                 this.offer(take);
             } catch (InterruptedException e) {
                 if (queue.size() == 0)
@@ -39,7 +39,7 @@ public abstract class AsyncConsumingTask<T> extends SpinneableTask implements Co
 
     @SneakyThrows
     public void consume(T product) {
-        log.debug("adding element to the queue");
+        log.trace("adding element to the queue");
         queue.put(product);
     }
 
