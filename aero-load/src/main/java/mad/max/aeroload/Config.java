@@ -13,8 +13,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
-import static mad.max.aeroload.JobConfig.CAPACITY;
-
 @Configuration
 public class Config {
     @Value("${aerospike.host:localhost}")
@@ -27,12 +25,16 @@ public class Config {
     private Integer ttl;
 
 
+    @Bean
+    public JobProfile jobProfile( @Value("${aerospike.maxThroughput:30}") int maxThroughput) {
+        return new JobProfile(maxThroughput);
+    }
 
     @Bean(destroyMethod = "close")
-    public AerospikeClient aerospikeClient() {
+    public AerospikeClient aerospikeClient(JobProfile jobProfile) {
         EventPolicy eventPolicy = new EventPolicy();
-        eventPolicy.maxCommandsInProcess = CAPACITY;
-        eventPolicy.maxCommandsInQueue = CAPACITY;
+        eventPolicy.maxCommandsInProcess = jobProfile.getMaxParallelCommands();
+        eventPolicy.maxCommandsInQueue = jobProfile.getMaxParallelCommands();
 
         EventLoops eventLoops = new NioEventLoops(eventPolicy, Runtime.getRuntime().availableProcessors());
 
@@ -42,8 +44,8 @@ public class Config {
         WritePolicy writePolicy = new WritePolicy();
         writePolicy.setTimeout(timeout);
         writePolicy.sendKey = true;
-        writePolicy.expiration = ttl*86400;
-        writePolicy.recordExistsAction= RecordExistsAction.UPDATE;
+        writePolicy.expiration = ttl * 86400;
+        writePolicy.recordExistsAction = RecordExistsAction.UPDATE;
         policy.writePolicyDefault = writePolicy;
 
         Host[] hosts = Host.parseHosts(host, port);
@@ -52,8 +54,8 @@ public class Config {
     }
 
     @Bean
-    Throttles throttles() {
-        return new Throttles(Runtime.getRuntime().availableProcessors(), CAPACITY);
+    Throttles throttles(JobProfile jobProfile) {
+        return new Throttles(Runtime.getRuntime().availableProcessors(), jobProfile.getMaxParallelCommands());
     }
 
 

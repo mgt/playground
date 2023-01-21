@@ -9,6 +9,7 @@ import com.aerospike.client.async.Throttles;
 import com.aerospike.client.cdt.ListOperation;
 import lombok.extern.slf4j.Slf4j;
 import mad.max.aeroload.JobConfig;
+import mad.max.aeroload.JobProfile;
 import mad.max.aeroload.model.AerospikeLoader;
 import mad.max.aeroload.model.FileLineKeyOpProducer;
 import mad.max.aeroload.model.FileReaderProducer;
@@ -31,22 +32,24 @@ public class Job {
     private final AerospikeClient client;
     private final Throttles throttles;
     private final JobConfig jobConfig;
+    private final JobProfile jobProfile;
 
-    Job(AerospikeClient client, Throttles throttles, JobConfig jobConfig) {
+    Job(AerospikeClient client, Throttles throttles, JobConfig jobConfig, JobProfile jobProfile) {
         this.client = client;
         this.throttles = throttles;
         this.jobConfig = jobConfig;
+        this.jobProfile = jobProfile;
     }
 
     @ShellMethod("Run job")
     public void run(long limit) {
-        AerospikeLoader loader = new AerospikeLoader(client, throttles, jobConfig.getMaxThroughput());
+        AerospikeLoader loader = new AerospikeLoader(jobProfile, client, throttles);
         loader.spinTask();
-        FileLineKeyOpProducer fileLineKeyOpProducer = new FileLineKeyOpProducer(loader);
+        FileLineKeyOpProducer fileLineKeyOpProducer = new FileLineKeyOpProducer(jobProfile, loader);
         StopWatch timeMeasure = new StopWatch();
         timeMeasure.start("Run job");
         FileReaderProducer fileReaderProducer =
-                new FileReaderProducer(jobConfig.getDelimiter(), jobConfig.getSegmentDelimiter(), jobConfig.getSegmentIndexInFile(),  new File(jobConfig.getFilePath()), jobConfig.isHasHeader(), fileLineKeyOpProducer);
+                new FileReaderProducer(jobConfig.getDelimiter(), jobConfig.getSegmentDelimiter(), jobConfig.getSegmentIndexInFile(),  new File(jobConfig.getFilePath()), jobConfig.isHasHeader(), fileLineKeyOpProducer, jobProfile);
         fileReaderProducer.run( limit <= 0?Long.MAX_VALUE:limit );
         timeMeasure.stop();
         System.out.println(timeMeasure.prettyPrint());

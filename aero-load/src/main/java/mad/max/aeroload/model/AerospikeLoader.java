@@ -11,6 +11,7 @@ import com.aerospike.client.listener.RecordListener;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
+import mad.max.aeroload.JobProfile;
 
 import java.text.SimpleDateFormat;
 import java.util.Date;
@@ -19,19 +20,16 @@ import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
-import static mad.max.aeroload.JobConfig.THREAD_SLEEP_MIN;
-
 @Slf4j
 public class AerospikeLoader extends Consumer<Product<Key, Operation[]>> {
     private final AerospikeClient client;
     private final Throttles throttles;
-    private final long maxThroughput;
     private final AerospikeLoadingMetrics metrics;
 
-    public AerospikeLoader(AerospikeClient client, Throttles throttles, long maxThroughput) {
+    public AerospikeLoader(JobProfile profile,AerospikeClient client, Throttles throttles) {
+        super(profile);
         this.client = client;
         this.throttles = throttles;
-        this.maxThroughput = maxThroughput;
         this.metrics = new AerospikeLoadingMetrics(System.currentTimeMillis());
     }
 
@@ -42,14 +40,14 @@ public class AerospikeLoader extends Consumer<Product<Key, Operation[]>> {
 
         //Checking if we are exceeding configured throughput
         //if so we either wait for the average time between
-        // the worst time a task take to complete and it's best
-        // or a minimun amount
-        if (maxThroughput > 0 && exceedingThroughput()) {
-            log.debug("Configured Throughput was exceeded:{}", maxThroughput);
+        // the worst time a task take to complete, and it's best
+        // or a minimum amount
+        if (profile.getMaxThroughput() > 0 && exceedingThroughput()) {
+            log.debug("Configured Throughput was exceeded:{}", profile.getMaxThroughput());
             metrics.writeQueuedCount.incrementAndGet();
             do {
                 long sleepingTime = metrics.getTaskElapsedAverageTime();
-                Thread.sleep(sleepingTime == 0 ? THREAD_SLEEP_MIN : Math.min(sleepingTime, THREAD_SLEEP_MIN));
+                profile.busyWait(sleepingTime);
             } while (exceedingThroughput());
             metrics.writeQueuedCount.decrementAndGet();
         }
@@ -60,7 +58,7 @@ public class AerospikeLoader extends Consumer<Product<Key, Operation[]>> {
 
         for (int i = 0; i < size; i++) {
             //Now we are searching for a free event loop
-            //an improvement here is to randomly search from both end and begining
+            //an improvement here is to randomly search from both end and beginning
             //so not all the first slots are filled first
             int available = throttles.getAvailable(i);
             if (maxAvailable > available) {
@@ -93,7 +91,7 @@ public class AerospikeLoader extends Consumer<Product<Key, Operation[]>> {
     }
 
     private boolean exceedingThroughput() {
-        return this.metrics.getCurrentThroughput() > this.maxThroughput;
+        return this.metrics.getCurrentThroughput() > this.profile.getMaxThroughput();
     }
 
     public String stats() {
@@ -106,8 +104,6 @@ public class AerospikeLoader extends Consumer<Product<Key, Operation[]>> {
         private final long startTime;
         private final Runnable onSuccess;
         private final Runnable onFailure;
-
-        // Write success callback.
 
         public AerospikeLoaderWriteListener(Product<Key, Operation[]> p, int eventLoopIndex, long startTime) {
             this.key = p.getA();

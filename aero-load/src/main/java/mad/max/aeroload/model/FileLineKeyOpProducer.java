@@ -8,17 +8,22 @@ import com.aerospike.client.cdt.ListPolicy;
 import com.aerospike.client.cdt.ListWriteFlags;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import mad.max.aeroload.JobProfile;
 
 import java.util.Arrays;
 
 @Slf4j
-@AllArgsConstructor
 public class FileLineKeyOpProducer extends Consumer<Product<String, String[]>> {
     public static final ListPolicy POLICY = new ListPolicy(ListOrder.UNORDERED, ListWriteFlags.ADD_UNIQUE | ListWriteFlags.NO_FAIL);
     public static final String SET_NAME = "audience_targeting_segments";
     public static final String NAMESPACE = "tempcache";
     public static final String BIN_SEGMENT_NAME = "list";
-    private Consumer<Product<Key, Operation[]>> consumer;
+    private final Consumer<Product<Key, Operation[]>> consumer;
+
+    public FileLineKeyOpProducer(JobProfile profile, Consumer<Product<Key, Operation[]>> consumer) {
+        super(profile);
+        this.consumer = consumer;
+    }
 
     public static Key getKey(String keyString) {
         return new Key(NAMESPACE, SET_NAME, keyString);

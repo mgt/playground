@@ -2,6 +2,7 @@ package mad.max.aeroload.model;
 
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import mad.max.aeroload.JobProfile;
 import org.springframework.util.StringUtils;
 
 import java.io.File;
@@ -15,8 +16,6 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.concurrent.atomic.AtomicLong;
 
-import static mad.max.aeroload.JobConfig.THREAD_SLEEP_MAX;
-
 @AllArgsConstructor
 @Slf4j
 public class FileReaderProducer {
@@ -26,6 +25,8 @@ public class FileReaderProducer {
     private final File file;
     private final boolean hasHeader;
     private final Consumer<Product<String, String[]>> consumer;
+    private JobProfile profile;
+
 
     public void run(long limit) {
         int lastReadLineNumber = -1;
@@ -41,7 +42,7 @@ public class FileReaderProducer {
             log.debug("Reading file: {} ", fileName);
 
             while (!br.ready()) {// wait in the case the buffer is not ready yet
-                busyWait();
+                profile.busyWait();
             }
 
             if (hasHeader) {// Skip reading 1st line of data file if it has a header
@@ -78,7 +79,7 @@ public class FileReaderProducer {
             //In case there are elements being processed we wait
             while (okCount.get() + errorCount.get() < lastReadLineNumber && !fail) {
                 try {
-                    busyWait();
+                    profile.busyWait();
                 } catch (InterruptedException e) {
                     //should we interrupt down the chain too?
                     fail = true;
@@ -90,9 +91,7 @@ public class FileReaderProducer {
         }
     }
 
-    private static void busyWait() throws InterruptedException {
-        Thread.sleep(THREAD_SLEEP_MAX);
-    }
+
 
     private static InputStream getInputStream(File file) throws IOException {
         return Files.newInputStream(file.toPath());
