@@ -11,8 +11,8 @@ import com.aerospike.client.policy.RecordExistsAction;
 import com.aerospike.client.policy.WritePolicy;
 import lombok.extern.slf4j.Slf4j;
 import mad.max.aeroload.model.AerospikeLoader;
-import mad.max.aeroload.model.FileLineKeyOpProducer;
-import mad.max.aeroload.model.FileReaderProducer;
+import mad.max.aeroload.model.FileLineToAeroObjectsAdapter;
+import mad.max.aeroload.model.FileLinesProducer;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StopWatch;
@@ -36,23 +36,25 @@ public class LoadingService {
 
     public void load(LoadingProfile loadingProfile) {
         Throttles throttles = new Throttles(Runtime.getRuntime().availableProcessors(), loadingProfile.getMaxParallelCommands());
+        StopWatch timeMeasure = new StopWatch();
 
         try (AerospikeClient client = aerospikeClient(loadingProfile)) {
             AerospikeLoader loader = new AerospikeLoader(client, throttles, loadingProfile.getMaxThroughput(), loadingProfile.getMaxQueuedElements());
             loader.spinOff();
-            FileLineKeyOpProducer fileLineKeyOpProducer = new FileLineKeyOpProducer(loader);
-            StopWatch timeMeasure = new StopWatch();
-            timeMeasure.start("Run job");
-            FileReaderProducer fileReaderProducer = new FileReaderProducer(fileLineKeyOpProducer);
+            FileLineToAeroObjectsAdapter fileLineToAeroObjectsAdapter = new FileLineToAeroObjectsAdapter(loader);
+            FileLinesProducer fileLinesProducer = new FileLinesProducer(fileLineToAeroObjectsAdapter);
 
-            FileReaderProducer.ReadingConfig readingConfig = FileReaderProducer.Configs.DEFAULT.getReadingConfig();
-            FileReaderProducer.Parameters parameters =
-                    new FileReaderProducer.Parameters(new File(filePath), 0, loadingProfile.getMaxLinesPerFile());
-            fileReaderProducer.run(parameters, readingConfig);
+            FileLinesProducer.ReadingConfig readingConfig = FileLinesProducer.Configs.DEFAULT.getReadingConfig();
+            FileLinesProducer.Parameters parameters =
+                    new FileLinesProducer.Parameters(new File(filePath), 0, loadingProfile.getMaxLinesPerFile());
+            timeMeasure.start("Start Loading");
+            fileLinesProducer.run(parameters, readingConfig);
+            timeMeasure.stop();
+            timeMeasure.start("waiting to complete");
             loader.waitToFinish();
             timeMeasure.stop();
-            log.info(timeMeasure.prettyPrint());
-            log.info(loader.stats());
+            System.out.println(timeMeasure.prettyPrint());
+            System.out.println(loader.stats());
         }
     }
 

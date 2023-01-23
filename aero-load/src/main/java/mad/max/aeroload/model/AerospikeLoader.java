@@ -49,13 +49,12 @@ public class AerospikeLoader extends AsyncConsumingTask<Product<Key, Operation[]
             metrics.writeQueuedCount.decrementAndGet();
         }
 
-
         //Checking if we are exceeding configured throughput
         //if so we either wait for the average time between
         // the worst time a task take to complete, and it's best
         // or a minimum amount
         if (maxThroughput > 0 && exceedingThroughput()) {
-            log.info("Configured Throughput was exceeded:{}", maxThroughput);
+            log.info("Configured throughput of {} was exceeded", maxThroughput);
             metrics.writeQueuedCount.incrementAndGet();
             do {
                 long sleepingTime = metrics.getTaskAvgElapsedTime();

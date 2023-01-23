@@ -12,15 +12,14 @@ import java.util.Arrays;
 import java.util.function.Consumer;
 
 @Slf4j
-public class FileLineKeyOpProducer implements Consumer<Product<String, String[]>> {
+public class FileLineToAeroObjectsAdapter extends Producer<Product<Key, Operation[]>> implements Consumer<Product<String, String[]>> {
     public static final ListPolicy POLICY = new ListPolicy(ListOrder.UNORDERED, ListWriteFlags.ADD_UNIQUE | ListWriteFlags.NO_FAIL);
     public static final String SET_NAME = "audience_targeting_segments";
     public static final String NAMESPACE = "tempcache";
     public static final String BIN_SEGMENT_NAME = "list";
-    private final Consumer<Product<Key, Operation[]>> consumingTask;
 
-    public FileLineKeyOpProducer(Consumer<Product<Key, Operation[]>> consumingTask) {
-        this.consumingTask = consumingTask;
+    public FileLineToAeroObjectsAdapter(Consumer<Product<Key, Operation[]>> consumer) {
+        super( consumer);
     }
 
     public static Key getKey(String keyString) {
@@ -37,7 +36,7 @@ public class FileLineKeyOpProducer implements Consumer<Product<String, String[]>
     @Override
     public void accept(Product<String, String[]> product) {
         try {
-            consumingTask.accept(new Product<>(getKey(product.getA()), getOperations(product.getB()),
+            this.push(new Product<>(getKey(product.getA()), getOperations(product.getB()),
                     product.getSuccessHandler(), product.getFailureHandler()));
         } catch (Exception e) {
             throw new RuntimeException(e);

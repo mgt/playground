@@ -1,7 +1,6 @@
 package mad.max.aeroload.model;
 
 import lombok.Getter;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.util.StringUtils;
 
@@ -17,11 +16,12 @@ import java.nio.file.Files;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 
-@RequiredArgsConstructor
 @Slf4j
-public class FileReaderProducer {
+public class FileLinesProducer extends Producer<Product<String, String[]>>{
 
-    private final Consumer<Product<String, String[]>> consumingTask;
+    public FileLinesProducer(Consumer<Product<String, String[]>> consumer) {
+        super(consumer);
+    }
 
     public void run(Parameters parameters, ReadingConfig config) {
         long lastReadLineNumber = -1;
@@ -64,7 +64,7 @@ public class FileReaderProducer {
 
                 //Configuring handlers, they are going to be called async
                 Handling handling = new Handling(okCount, errorCount, totalTime, fileName, keyString, System.currentTimeMillis(), br.getLineNumber());
-                consumingTask.accept(new Product<>(keyString, listString, handling::handleSuccess, handling::handleFail));
+                this.push(new Product<>(keyString, listString, handling::handleSuccess, handling::handleFail));
                 lastReadLineNumber = br.getLineNumber();
             }
         } catch (Exception e) {//Unrecoverable scenario, we don't know the nature of the error

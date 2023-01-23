@@ -17,7 +17,7 @@ public class LoadingProfile {
     public enum PredefinedProfiles {
         DEFAULT(new LoadingProfile(20, Long.MAX_VALUE, 50, 100)),
         CONSERVATIVE(new LoadingProfile(10, Long.MAX_VALUE, 20, 1000)),
-        PERFORMANCE(new LoadingProfile(50, Long.MAX_VALUE, 100, 1000));
+        PERFORMANCE(new LoadingProfile(100, Long.MAX_VALUE, 100, 1000));
         private final LoadingProfile profile;
 
         PredefinedProfiles(LoadingProfile profile) {

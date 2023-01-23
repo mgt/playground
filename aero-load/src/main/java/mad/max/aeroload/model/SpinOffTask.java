@@ -42,8 +42,8 @@ public abstract class SpinOffTask implements Runnable, Closeable {
         setFinished(); //set the finished signal
         try {
             sleepMinTime(); //giving it time to ack the finish signal
-            future.get();
-        } catch (InterruptedException | ExecutionException e) {
+            future.cancel(true);
+        } catch (InterruptedException e) {
             throw new RuntimeException(e);
         }
     }

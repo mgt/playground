@@ -19,10 +19,8 @@ public abstract class AsyncConsumingTask<T> extends SpinOffTask implements Consu
 
     public void run() {
         while (!isFinished()) {
-            log.debug("Starting to accept");
             try {
                 T take = queue.take();
-                log.trace("consuming element");
                 this.offer(take);
             } catch (InterruptedException e) {
                 if (queue.size() == 0)

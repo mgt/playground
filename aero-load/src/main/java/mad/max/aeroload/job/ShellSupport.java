@@ -17,25 +17,25 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
-import static mad.max.aeroload.model.FileLineKeyOpProducer.BIN_SEGMENT_NAME;
-import static mad.max.aeroload.model.FileLineKeyOpProducer.POLICY;
-import static mad.max.aeroload.model.FileLineKeyOpProducer.getKey;
+import static mad.max.aeroload.model.FileLineToAeroObjectsAdapter.BIN_SEGMENT_NAME;
+import static mad.max.aeroload.model.FileLineToAeroObjectsAdapter.POLICY;
+import static mad.max.aeroload.model.FileLineToAeroObjectsAdapter.getKey;
 
 @Slf4j
 @ShellComponent
-public class Shell {
+public class ShellSupport {
     private final AerospikeClient client;
     private final LoadingService loadingService;
 
-    Shell(AerospikeClient client, LoadingService loadingService) {
+    ShellSupport(AerospikeClient client, LoadingService loadingService) {
         this.client = client;
         this.loadingService = loadingService;
     }
 
     @ShellMethod("Run job")
-    public void run(@ShellOption(defaultValue = "DEFAULT") LoadingProfile.PredefinedProfiles predefinedProfiles, long limit) {
-        LoadingProfile profile = predefinedProfiles.getProfile();
-        loadingService.load(new LoadingProfile(profile.getMaxThroughput(),limit > 0 ? limit : profile.getMaxLinesPerFile(), profile.getMaxParallelCommands(), profile.getMaxQueuedElements()));
+    public void run(@ShellOption(defaultValue = "DEFAULT") LoadingProfile.PredefinedProfiles profile, long limit) {
+        LoadingProfile p = profile.getProfile();
+        loadingService.load(new LoadingProfile(p.getMaxThroughput(),limit > 0 ? limit : p.getMaxLinesPerFile(), p.getMaxParallelCommands(), p.getMaxQueuedElements()));
     }
 
     @ShellMethod("check key")
