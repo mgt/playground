@@ -13,8 +13,10 @@ import mad.max.aeroload.JobProfile;
 import mad.max.aeroload.model.AerospikeLoader;
 import mad.max.aeroload.model.FileLineKeyOpProducer;
 import mad.max.aeroload.model.FileReaderProducer;
+import mad.max.aeroload.model.Waiter;
 import org.springframework.shell.standard.ShellComponent;
 import org.springframework.shell.standard.ShellMethod;
+import org.springframework.shell.standard.ShellOption;
 import org.springframework.util.StopWatch;
 
 import java.io.File;
@@ -30,27 +32,27 @@ import static mad.max.aeroload.model.FileLineKeyOpProducer.getKey;
 @ShellComponent
 public class Job {
     private final AerospikeClient client;
-    private final Throttles throttles;
     private final JobConfig jobConfig;
-    private final JobProfile jobProfile;
 
-    Job(AerospikeClient client, Throttles throttles, JobConfig jobConfig, JobProfile jobProfile) {
+    Job(AerospikeClient client, JobConfig jobConfig) {
         this.client = client;
-        this.throttles = throttles;
         this.jobConfig = jobConfig;
-        this.jobProfile = jobProfile;
     }
 
     @ShellMethod("Run job")
-    public void run(long limit) {
-        AerospikeLoader loader = new AerospikeLoader(jobProfile, client, throttles);
+    public void run(@ShellOption(defaultValue = "DEFAULT") JobProfile.PredefinedProfiles predefinedProfiles, long limit) {
+        JobProfile jobProfile = predefinedProfiles.getProfile();
+        Throttles throttles = new Throttles(Runtime.getRuntime().availableProcessors(), jobProfile.getMaxParallelCommands());
+        AerospikeLoader loader = new AerospikeLoader(client, throttles, jobProfile.getMaxThroughput(), jobProfile.getMaxQueuedElements());
         loader.spinTask();
-        FileLineKeyOpProducer fileLineKeyOpProducer = new FileLineKeyOpProducer( loader);
+        FileLineKeyOpProducer fileLineKeyOpProducer = new FileLineKeyOpProducer(loader);
         StopWatch timeMeasure = new StopWatch();
         timeMeasure.start("Run job");
         FileReaderProducer fileReaderProducer =
-                new FileReaderProducer(jobConfig.getDelimiter(), jobConfig.getSegmentDelimiter(), jobConfig.getSegmentIndexInFile(),  new File(jobConfig.getFilePath()), jobConfig.isHasHeader(), fileLineKeyOpProducer, jobProfile);
-        fileReaderProducer.run( limit <= 0?Long.MAX_VALUE:limit );
+                new FileReaderProducer(fileLineKeyOpProducer);
+        FileReaderProducer.FileReaderParameters parameters = new FileReaderProducer.FileReaderParameters(jobConfig.getDelimiter(), jobConfig.getSegmentDelimiter(), jobConfig.getSegmentIndexInFile(), new File(jobConfig.getFilePath()), jobConfig.isHasHeader(),
+                0, limit > 0 ?limit: jobProfile.getMaxLinesPerFile());
+        fileReaderProducer.run(parameters);
         timeMeasure.stop();
         System.out.println(timeMeasure.prettyPrint());
         System.out.println(loader.stats());

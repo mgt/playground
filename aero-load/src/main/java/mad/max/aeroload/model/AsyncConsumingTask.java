@@ -3,7 +3,6 @@ package mad.max.aeroload.model;
 import lombok.AllArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
-import mad.max.aeroload.JobProfile;
 
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
@@ -12,11 +11,11 @@ import java.util.concurrent.BlockingQueue;
 @Slf4j
 public abstract class AsyncConsumingTask<T> extends SpinneableTask implements Consumer<T> {
     private final BlockingQueue<T> queue;
-    protected final JobProfile profile;
+    protected final Waiter waiter;
 
-    public AsyncConsumingTask(JobProfile profile) {
-        queue = new ArrayBlockingQueue<>(profile.getMaxQueuedElements());
-        this.profile =profile;
+    public AsyncConsumingTask(int maxQueuedElements) {
+        this.queue = new ArrayBlockingQueue<>(maxQueuedElements);
+        this.waiter = new Waiter();
     }
 
     public void run() {
@@ -50,7 +49,7 @@ public abstract class AsyncConsumingTask<T> extends SpinneableTask implements Co
     public void waitToFinish() {
         while (!isFinished() && !queue.isEmpty()) {
             try {
-                profile.busyWait();
+                waiter.busyWait();
             } catch (InterruptedException e) {
                 if (!queue.isEmpty()) {
                     log.error("did not finish but asked to stop", e);

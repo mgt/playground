@@ -10,12 +10,12 @@ import com.aerospike.client.async.Throttles;
 import com.aerospike.client.listener.RecordListener;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import mad.max.aeroload.JobProfile;
 
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -24,55 +24,66 @@ public class AerospikeLoader extends AsyncConsumingTask<Product<Key, Operation[]
     private final AerospikeClient client;
     private final Throttles throttles;
     private final AerospikeLoadingMetrics metrics;
+    private final int maxThroughput;
 
-    public AerospikeLoader(JobProfile profile,AerospikeClient client, Throttles throttles) {
-        super(profile);
+
+    public AerospikeLoader(AerospikeClient client, Throttles throttles, int maxThroughput, int maxCommands) {
+        super(maxCommands);
         this.client = client;
         this.throttles = throttles;
         this.metrics = new AerospikeLoadingMetrics(System.currentTimeMillis());
+        this.maxThroughput = maxThroughput;
     }
 
     protected void offer(Product<Key, Operation[]> product) throws InterruptedException {
         long startTime = System.currentTimeMillis();
         EventLoops eventLoops = client.getCluster().eventLoops;
 
+
+        if (metrics.slowDownFlag.get()) {//checking if we have an indication that the server is having problems
+            metrics.writeQueuedCount.incrementAndGet();
+            do {
+                log.info("The slowdown flag is on, waiting for it to be cleared");
+                waiter.busyWait();
+            } while (metrics.slowDownFlag.get());
+            metrics.writeQueuedCount.decrementAndGet();
+        }
+
+
         //Checking if we are exceeding configured throughput
         //if so we either wait for the average time between
         // the worst time a task take to complete, and it's best
         // or a minimum amount
-        if (profile.getMaxThroughput() > 0 && exceedingThroughput()) {
-            log.debug("Configured Throughput was exceeded:{}", profile.getMaxThroughput());
+        if (maxThroughput > 0 && exceedingThroughput()) {
+            log.info("Configured Throughput was exceeded:{}", maxThroughput);
             metrics.writeQueuedCount.incrementAndGet();
             do {
-                long sleepingTime = metrics.getTaskElapsedAverageTime();
-                profile.busyWait(sleepingTime);
+                long sleepingTime = metrics.getTaskAvgElapsedTime();
+                waiter.busyWait(sleepingTime);
             } while (exceedingThroughput());
             metrics.writeQueuedCount.decrementAndGet();
         }
 
-        int eventLoopIndex = -1;
-        int maxAvailable = 0;
+        boolean queue = true;
         int size = eventLoops.getSize();
+        int eventLoopIndex = ThreadLocalRandom.current().nextInt(0, size);
 
         for (int i = 0; i < size; i++) {
-            //Now we are searching for a free event loop
-            //an improvement here is to randomly search from both end and beginning
-            //so not all the first slots are filled first
-            int available = throttles.getAvailable(i);
-            if (maxAvailable > available) {
-                eventLoopIndex = i;
-                maxAvailable = available;
+            //Now we are searching for a free event loop starting randomly
+            if (throttles.getAvailable((eventLoopIndex + i) % size) > 0) {
+                eventLoopIndex = (eventLoopIndex + i) % size;
+                queue = false;
+                break;
             }
         }
 
-        if (maxAvailable == 0) { //we didn't find a free event loop, search one randomly
+        if (queue) { //we didn't find a free event loop, wait for the one randomly selected first
             metrics.writeQueuedCount.incrementAndGet();
-            eventLoopIndex = ThreadLocalRandom.current().nextInt(0, size);
             log.debug("None of the {} loops are available. Waiting on:{}. Pending:{}", size, eventLoopIndex, metrics.getPending());
         }
 
         if (throttles.waitForSlot(eventLoopIndex, 1)) { // if the loop has no space we will wait until is free. if not is assigned
-            if (maxAvailable == 0) //meaning we waited before continued, so we have to decrease the queued metric
+            if (queue) //meaning the previous if was executed, so we have to decrease the queued metric
                 metrics.writeQueuedCount.decrementAndGet();
             metrics.writeProcessingCount.incrementAndGet();
 
@@ -85,11 +96,10 @@ public class AerospikeLoader extends AsyncConsumingTask<Product<Key, Operation[]
 
     @Override
     protected void interruptedError() {
-        metrics.writeErrors.incrementAndGet();
     }
 
     private boolean exceedingThroughput() {
-        return this.metrics.getCurrentThroughput() > this.profile.getMaxThroughput();
+        return this.metrics.getCurrentThroughput() > maxThroughput;
     }
 
     public String stats() {
@@ -135,15 +145,17 @@ public class AerospikeLoader extends AsyncConsumingTask<Product<Key, Operation[]
                     metrics.writeKeyExists.incrementAndGet();
                 case 9:
                     metrics.writeTimeouts.incrementAndGet();
-                    //case 13:
-                    //Record too big
-                case 14:
+                case 13: //AS_ERR_RECORD_TOO_BIG:
+                    metrics.writeRecordTooBig.incrementAndGet();
+                case 14: //AS_ERR_KEY_BUSY
                     metrics.writeHotKey.incrementAndGet();
                 case 18:
                     metrics.writeDeviceOverload.incrementAndGet();
 
-                    //maybe for some other errors we need to flag to #consume method
-                    // not to continue for a while, so we don't make a situation worst
+                    //TODO identify which errors should change the slowDownFlag and what's the mechanism that will clean that flag
+                    //should consider that other threads might rise the flag too.
+                    //AerospikeException.AsyncQueueFull exception is thrown.
+                    // Your application should respond by delaying commands in a non-event loop thread until eventLoop.getQueueSize() is sufficiently low.
             }
             CompletableFuture.runAsync(onFailure);
         }
@@ -160,12 +172,14 @@ public class AerospikeLoader extends AsyncConsumingTask<Product<Key, Operation[]
         private final AtomicInteger writeKeyExists = new AtomicInteger();
         private final AtomicInteger writeHotKey = new AtomicInteger();
         private final AtomicInteger writeDeviceOverload = new AtomicInteger();
+        public AtomicLong writeRecordTooBig =  new AtomicLong();
         private final AtomicLong writeBestTime = new AtomicLong();
         private final AtomicLong writeWorstTime = new AtomicLong();
+        private final AtomicBoolean slowDownFlag = new AtomicBoolean(false);
         private final long startTime;
 
         public void registerTime(long time) {
-            writeBestTime.getAndAccumulate(time,Math::min);
+            writeBestTime.getAndAccumulate(time, Math::min);
             writeWorstTime.getAndAccumulate(time, Math::max);
         }
 
@@ -178,7 +192,7 @@ public class AerospikeLoader extends AsyncConsumingTask<Product<Key, Operation[]
             return elapsedTime > 0L ? transactions / elapsedTime : 0;
         }
 
-        public long getTaskElapsedAverageTime(){
+        public long getTaskAvgElapsedTime() {
             return (writeBestTime.get() + writeWorstTime.get()) / 2;
         }
 
@@ -189,18 +203,19 @@ public class AerospikeLoader extends AsyncConsumingTask<Product<Key, Operation[]
             double tps = 1000 * (this.writeCompletedCount.get() + this.writeErrors.get()) / (double) elapsedTime;
 
             return String.format("StartedAt:%s (duration:%f(min) processed:%d inProgress:%d queued:%d) " +
-                            "Write(throughput:%d/ms tps:%f/s bestTime:%d worstTime:%d) " +
-                            "Errors(total:%d, timeouts:%d, keyExists:%d, hotKeys:%d, deviceOverload:%d)",
+                            "Write(throughput:%dops/ms tps:%f/s bestTime:%d worstTime:%d) " +
+                            "Errors(total:%d, timeouts:%d, keyExists:%d, hotKeys:%d, deviceOverload:%d, recordTooBig:%d)",
                     DATE_FORMAT.format(new Date(startTime)), ((double) elapsedTime) / 60000,
                     this.writeCompletedCount.get(), this.writeProcessingCount.get(), this.writeQueuedCount.get(),
                     getCurrentThroughput(), tps, this.writeBestTime.get(), this.writeWorstTime.get(),
                     this.writeErrors.get(), this.writeTimeouts.get(), this.writeKeyExists.get(),
-                    this.writeHotKey.get(), this.writeDeviceOverload.get());
+                    this.writeHotKey.get(), this.writeDeviceOverload.get(), this.writeRecordTooBig.get());
         }
 
         public long getPending() {
             return this.writeProcessingCount.get() + this.writeQueuedCount.get();
         }
+
         private long getElapsedTime() {
             return System.currentTimeMillis() - this.startTime;
         }
