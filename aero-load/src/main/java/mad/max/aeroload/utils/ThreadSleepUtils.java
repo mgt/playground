@@ -1,4 +1,4 @@
-package mad.max.aeroload.model;
+package mad.max.aeroload.utils;
 
 public class ThreadSleepUtils {
     public static final int THREAD_SLEEP_MAX = 1000;

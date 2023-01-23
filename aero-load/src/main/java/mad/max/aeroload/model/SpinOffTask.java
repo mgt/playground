@@ -4,10 +4,9 @@ import org.springframework.util.Assert;
 
 import java.io.Closeable;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import static mad.max.aeroload.model.ThreadSleepUtils.sleepMinTime;
+import static mad.max.aeroload.utils.ThreadSleepUtils.sleepMinTime;
 
 /**
  * A runnable that can spin off the run method in another thread.

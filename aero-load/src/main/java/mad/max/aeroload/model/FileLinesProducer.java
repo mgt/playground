@@ -2,6 +2,7 @@ package mad.max.aeroload.model;
 
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
+import mad.max.aeroload.utils.ThreadSleepUtils;
 import org.springframework.util.StringUtils;
 
 import java.io.File;

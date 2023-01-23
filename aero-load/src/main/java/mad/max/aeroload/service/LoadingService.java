@@ -15,7 +15,6 @@ import mad.max.aeroload.model.FileLineToAeroObjectsAdapter;
 import mad.max.aeroload.model.FileLinesProducer;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
-import org.springframework.util.StopWatch;
 
 import java.io.File;
 
@@ -36,7 +35,7 @@ public class LoadingService {
 
     public void load(LoadingProfile loadingProfile) {
         Throttles throttles = new Throttles(Runtime.getRuntime().availableProcessors(), loadingProfile.getMaxParallelCommands());
-        StopWatch timeMeasure = new StopWatch();
+
 
         try (AerospikeClient client = aerospikeClient(loadingProfile)) {
             AerospikeLoader loader = new AerospikeLoader(client, throttles, loadingProfile.getMaxThroughput(), loadingProfile.getMaxQueuedElements());
@@ -47,13 +46,9 @@ public class LoadingService {
             FileLinesProducer.ReadingConfig readingConfig = FileLinesProducer.Configs.DEFAULT.getReadingConfig();
             FileLinesProducer.Parameters parameters =
                     new FileLinesProducer.Parameters(new File(filePath), 0, loadingProfile.getMaxLinesPerFile());
-            timeMeasure.start("Start Loading");
             fileLinesProducer.run(parameters, readingConfig);
-            timeMeasure.stop();
-            timeMeasure.start("waiting to complete");
             loader.waitToFinish();
-            timeMeasure.stop();
-            System.out.println(timeMeasure.prettyPrint());
+
             System.out.println(loader.stats());
         }
     }
