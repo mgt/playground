@@ -5,20 +5,14 @@ import com.aerospike.client.Bin;
 import com.aerospike.client.Key;
 import com.aerospike.client.Operation;
 import com.aerospike.client.Record;
-import com.aerospike.client.async.Throttles;
 import com.aerospike.client.cdt.ListOperation;
 import lombok.extern.slf4j.Slf4j;
-import mad.max.aeroload.JobConfig;
-import mad.max.aeroload.JobProfile;
-import mad.max.aeroload.model.AerospikeLoader;
-import mad.max.aeroload.model.FileLineKeyOpProducer;
-import mad.max.aeroload.model.FileReaderProducer;
+import mad.max.aeroload.service.LoadingProfile;
+import mad.max.aeroload.service.LoadingService;
 import org.springframework.shell.standard.ShellComponent;
 import org.springframework.shell.standard.ShellMethod;
 import org.springframework.shell.standard.ShellOption;
-import org.springframework.util.StopWatch;
 
-import java.io.File;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
@@ -29,34 +23,19 @@ import static mad.max.aeroload.model.FileLineKeyOpProducer.getKey;
 
 @Slf4j
 @ShellComponent
-public class Job {
+public class Shell {
     private final AerospikeClient client;
-    private final JobConfig jobConfig;
+    private final LoadingService loadingService;
 
-    Job(AerospikeClient client, JobConfig jobConfig) {
+    Shell(AerospikeClient client, LoadingService loadingService) {
         this.client = client;
-        this.jobConfig = jobConfig;
+        this.loadingService = loadingService;
     }
 
     @ShellMethod("Run job")
-    public void run(@ShellOption(defaultValue = "DEFAULT") JobProfile.PredefinedProfiles predefinedProfiles, long limit) {
-        JobProfile jobProfile = predefinedProfiles.getProfile();
-        Throttles throttles = new Throttles(Runtime.getRuntime().availableProcessors(), jobProfile.getMaxParallelCommands());
-        AerospikeLoader loader = new AerospikeLoader(client, throttles, jobProfile.getMaxThroughput(), jobProfile.getMaxQueuedElements());
-        loader.spinOff();
-        FileLineKeyOpProducer fileLineKeyOpProducer = new FileLineKeyOpProducer(loader);
-        StopWatch timeMeasure = new StopWatch();
-        timeMeasure.start("Run job");
-        FileReaderProducer fileReaderProducer = new FileReaderProducer(fileLineKeyOpProducer);
-        FileReaderProducer.FileReaderParameters parameters =
-                new FileReaderProducer.FileReaderParameters(jobConfig.getDelimiter(), jobConfig.getSegmentDelimiter(), jobConfig.getSegmentIndexInFile(),
-                        new File(jobConfig.getFilePath()), jobConfig.isHasHeader(),
-                        0, limit > 0 ? limit : jobProfile.getMaxLinesPerFile());
-        fileReaderProducer.run(parameters);
-        timeMeasure.stop();
-        System.out.println(timeMeasure.prettyPrint());
-        System.out.println(loader.stats());
-        loader.waitToFinish();
+    public void run(@ShellOption(defaultValue = "DEFAULT") LoadingProfile.PredefinedProfiles predefinedProfiles, long limit) {
+        LoadingProfile profile = predefinedProfiles.getProfile();
+        loadingService.load(new LoadingProfile(profile.getMaxThroughput(),limit > 0 ? limit : profile.getMaxLinesPerFile(), profile.getMaxParallelCommands(), profile.getMaxQueuedElements()));
     }
 
     @ShellMethod("check key")

@@ -1,6 +1,5 @@
 package mad.max.aeroload.model;
 
-import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -24,7 +23,7 @@ public class FileReaderProducer {
 
     private final Consumer<Product<String, String[]>> consumingTask;
 
-    public void run(FileReaderParameters parameters) {
+    public void run(Parameters parameters, ReadingConfig config) {
         long lastReadLineNumber = -1;
         AtomicLong totalTime = new AtomicLong(0); //Keeps track of the total time spent in the process
         AtomicLong errorCount = new AtomicLong(0); //Amount of errors occurred here or down the chain
@@ -43,25 +42,25 @@ public class FileReaderProducer {
                 ThreadSleepUtils.sleepMaxTime();
             }
 
-            if (parameters.hasHeader()) {// Skip reading 1st line of data file if it has a header
+            if (config.hasHeader()) {// Skip reading 1st line of data file if it has a header
                 br.readLine();
             }
 
             String line;
             while ((line = br.readLine()) != null && br.getLineNumber() >= parameters.start() && br.getLineNumber() <= parameters.limit()) {
                 log.trace("Read line {} from file:{} ", br.getLineNumber(), fileName);
-                String[] fileColumns = line.split(parameters.delimiter());
+                String[] fileColumns = line.split(config.delimiter());
 
                 //Validate the line we read, we should be able to get at least the segment list
-                if (!StringUtils.hasText(line) || fileColumns.length < parameters.segmentColumnIndexInFile()) {
+                if (!StringUtils.hasText(line) || fileColumns.length < config.segmentColumnIndexInFile()) {
                     errorCount.incrementAndGet();
                     log.error("Error processing file {}: Line:{} ", fileName, br.getLineNumber());
                     continue;
                 }
 
                 String keyString = fileColumns[0];
-                String[] listString = fileColumns[parameters.segmentColumnIndexInFile()]
-                        .split(parameters.segmentDelimiter());
+                String[] listString = fileColumns[config.segmentColumnIndexInFile()]
+                        .split(config.segmentDelimiter());
 
                 //Configuring handlers, they are going to be called async
                 Handling handling = new Handling(okCount, errorCount, totalTime, fileName, keyString, System.currentTimeMillis(), br.getLineNumber());
@@ -93,10 +92,20 @@ public class FileReaderProducer {
         return Files.newInputStream(file.toPath());
     }
 
-    @AllArgsConstructor
+    public record Parameters(File file, long start, long limit) {
+    }
+    public record ReadingConfig(String delimiter, String segmentDelimiter, int segmentColumnIndexInFile, boolean hasHeader) {
+    }
+
     @Getter
-    public record FileReaderParameters(String delimiter, String segmentDelimiter, int segmentColumnIndexInFile,
-                                       File file, boolean hasHeader, long start, long limit) {
+    public enum Configs{
+        DEFAULT(new ReadingConfig("\t",",",1,false));
+
+        private final ReadingConfig readingConfig;
+
+        Configs(ReadingConfig readingConfig) {
+            this.readingConfig = readingConfig;
+        }
     }
 
     private record Handling(AtomicLong okCount, AtomicLong errorCount, AtomicLong totalTime, String file,
