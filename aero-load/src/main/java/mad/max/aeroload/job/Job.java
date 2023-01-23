@@ -13,7 +13,6 @@ import mad.max.aeroload.JobProfile;
 import mad.max.aeroload.model.AerospikeLoader;
 import mad.max.aeroload.model.FileLineKeyOpProducer;
 import mad.max.aeroload.model.FileReaderProducer;
-import mad.max.aeroload.model.Waiter;
 import org.springframework.shell.standard.ShellComponent;
 import org.springframework.shell.standard.ShellMethod;
 import org.springframework.shell.standard.ShellOption;
@@ -44,14 +43,15 @@ public class Job {
         JobProfile jobProfile = predefinedProfiles.getProfile();
         Throttles throttles = new Throttles(Runtime.getRuntime().availableProcessors(), jobProfile.getMaxParallelCommands());
         AerospikeLoader loader = new AerospikeLoader(client, throttles, jobProfile.getMaxThroughput(), jobProfile.getMaxQueuedElements());
-        loader.spinTask();
+        loader.spinOff();
         FileLineKeyOpProducer fileLineKeyOpProducer = new FileLineKeyOpProducer(loader);
         StopWatch timeMeasure = new StopWatch();
         timeMeasure.start("Run job");
-        FileReaderProducer fileReaderProducer =
-                new FileReaderProducer(fileLineKeyOpProducer);
-        FileReaderProducer.FileReaderParameters parameters = new FileReaderProducer.FileReaderParameters(jobConfig.getDelimiter(), jobConfig.getSegmentDelimiter(), jobConfig.getSegmentIndexInFile(), new File(jobConfig.getFilePath()), jobConfig.isHasHeader(),
-                0, limit > 0 ?limit: jobProfile.getMaxLinesPerFile());
+        FileReaderProducer fileReaderProducer = new FileReaderProducer(fileLineKeyOpProducer);
+        FileReaderProducer.FileReaderParameters parameters =
+                new FileReaderProducer.FileReaderParameters(jobConfig.getDelimiter(), jobConfig.getSegmentDelimiter(), jobConfig.getSegmentIndexInFile(),
+                        new File(jobConfig.getFilePath()), jobConfig.isHasHeader(),
+                        0, limit > 0 ? limit : jobProfile.getMaxLinesPerFile());
         fileReaderProducer.run(parameters);
         timeMeasure.stop();
         System.out.println(timeMeasure.prettyPrint());

@@ -6,21 +6,20 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
+import java.util.function.Consumer;
 
 @AllArgsConstructor
 @Slf4j
-public abstract class AsyncConsumingTask<T> extends SpinneableTask implements Consumer<T> {
+public abstract class AsyncConsumingTask<T> extends SpinOffTask implements Consumer<T> {
     private final BlockingQueue<T> queue;
-    protected final Waiter waiter;
 
     public AsyncConsumingTask(int maxQueuedElements) {
         this.queue = new ArrayBlockingQueue<>(maxQueuedElements);
-        this.waiter = new Waiter();
     }
 
     public void run() {
         while (!isFinished()) {
-            log.debug("Starting to consume");
+            log.debug("Starting to accept");
             try {
                 T take = queue.take();
                 log.trace("consuming element");
@@ -37,7 +36,7 @@ public abstract class AsyncConsumingTask<T> extends SpinneableTask implements Co
     }
 
     @SneakyThrows
-    public void consume(T product) {
+    public void accept(T product) {
         log.trace("adding element to the queue");
         queue.put(product);
     }
@@ -49,7 +48,7 @@ public abstract class AsyncConsumingTask<T> extends SpinneableTask implements Co
     public void waitToFinish() {
         while (!isFinished() && !queue.isEmpty()) {
             try {
-                waiter.busyWait();
+                ThreadSleepUtils.sleepMaxTime();
             } catch (InterruptedException e) {
                 if (!queue.isEmpty()) {
                     log.error("did not finish but asked to stop", e);

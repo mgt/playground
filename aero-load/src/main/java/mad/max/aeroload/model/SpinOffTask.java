@@ -3,19 +3,25 @@ package mad.max.aeroload.model;
 import org.springframework.util.Assert;
 
 import java.io.Closeable;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-public abstract class SpinneableTask implements Runnable, Closeable {
+import static mad.max.aeroload.model.ThreadSleepUtils.sleepMinTime;
+
+/**
+ * A runnable that can spin off the run method in another thread.
+ * Run method should address changes on the finished flag and end its processing.
+ */
+public abstract class SpinOffTask implements Runnable, Closeable {
     private final AtomicBoolean finished = new AtomicBoolean(false);
     private final AtomicBoolean started = new AtomicBoolean(false);
-    private Thread thread = null;
+    private CompletableFuture<Void> future;
 
-
-    public void spinTask() {
+    public void spinOff() {
         Assert.isTrue(!isStarted(), "Should not be started");
-        this.thread = new Thread(this);
+        future = CompletableFuture.runAsync(this);
         this.started.getAndSet(true);
-        this.thread.start();
     }
 
     public void setFinished() {
@@ -32,14 +38,15 @@ public abstract class SpinneableTask implements Runnable, Closeable {
     }
 
     @Override
-    public void close(){
-        setFinished();
+    public void close() {
+        setFinished(); //set the finished signal
         try {
-            Thread.sleep(10);
-            if (thread.isAlive())
-                this.thread.interrupt();
-        } catch (InterruptedException e) {
+            sleepMinTime(); //giving it time to ack the finish signal
+            future.get();
+        } catch (InterruptedException | ExecutionException e) {
             throw new RuntimeException(e);
         }
     }
+
+
 }

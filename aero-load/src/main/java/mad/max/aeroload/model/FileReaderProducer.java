@@ -16,14 +16,13 @@ import java.io.Writer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Consumer;
 
 @RequiredArgsConstructor
 @Slf4j
 public class FileReaderProducer {
 
     private final Consumer<Product<String, String[]>> consumingTask;
-    private final Waiter waiter = new Waiter();
-
 
     public void run(FileReaderParameters parameters) {
         long lastReadLineNumber = -1;
@@ -41,7 +40,7 @@ public class FileReaderProducer {
             log.debug("Reading file: {} ", fileName);
 
             while (!br.ready()) {// wait in the case the buffer is not ready yet
-                waiter.busyWait();
+                ThreadSleepUtils.sleepMaxTime();
             }
 
             if (parameters.hasHeader()) {// Skip reading 1st line of data file if it has a header
@@ -66,7 +65,7 @@ public class FileReaderProducer {
 
                 //Configuring handlers, they are going to be called async
                 Handling handling = new Handling(okCount, errorCount, totalTime, fileName, keyString, System.currentTimeMillis(), br.getLineNumber());
-                consumingTask.consume(new Product<>(keyString, listString, handling::handleSuccess, handling::handleFail));
+                consumingTask.accept(new Product<>(keyString, listString, handling::handleSuccess, handling::handleFail));
                 lastReadLineNumber = br.getLineNumber();
             }
         } catch (Exception e) {//Unrecoverable scenario, we don't know the nature of the error
@@ -78,9 +77,9 @@ public class FileReaderProducer {
             //In case there are elements being processed we wait
             while (okCount.get() + errorCount.get() < lastReadLineNumber && !fail) {
                 try {
-                    waiter.busyWait();
+                    ThreadSleepUtils.sleepMaxTime();
                 } catch (InterruptedException e) {
-                    //should we interrupt down the chain too?
+                    //should we interrupt up the chain too?
                     fail = true;
                 }
             }
@@ -90,11 +89,9 @@ public class FileReaderProducer {
         }
     }
 
-
     private static InputStream getInputStream(File file) throws IOException {
         return Files.newInputStream(file.toPath());
     }
-
 
     @AllArgsConstructor
     @Getter

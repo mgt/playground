@@ -7,9 +7,9 @@ import com.aerospike.client.cdt.ListOrder;
 import com.aerospike.client.cdt.ListPolicy;
 import com.aerospike.client.cdt.ListWriteFlags;
 import lombok.extern.slf4j.Slf4j;
-import mad.max.aeroload.JobProfile;
 
 import java.util.Arrays;
+import java.util.function.Consumer;
 
 @Slf4j
 public class FileLineKeyOpProducer implements Consumer<Product<String, String[]>> {
@@ -35,9 +35,9 @@ public class FileLineKeyOpProducer implements Consumer<Product<String, String[]>
     }
 
     @Override
-    public void consume(Product<String, String[]> product) {
+    public void accept(Product<String, String[]> product) {
         try {
-            consumingTask.consume(new Product<>(getKey(product.getA()), getOperations(product.getB()),
+            consumingTask.accept(new Product<>(getKey(product.getA()), getOperations(product.getB()),
                     product.getSuccessHandler(), product.getFailureHandler()));
         } catch (Exception e) {
             throw new RuntimeException(e);

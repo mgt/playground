@@ -44,7 +44,7 @@ public class AerospikeLoader extends AsyncConsumingTask<Product<Key, Operation[]
             metrics.writeQueuedCount.incrementAndGet();
             do {
                 log.info("The slowdown flag is on, waiting for it to be cleared");
-                waiter.busyWait();
+                ThreadSleepUtils.sleepMaxTime();
             } while (metrics.slowDownFlag.get());
             metrics.writeQueuedCount.decrementAndGet();
         }
@@ -59,7 +59,7 @@ public class AerospikeLoader extends AsyncConsumingTask<Product<Key, Operation[]
             metrics.writeQueuedCount.incrementAndGet();
             do {
                 long sleepingTime = metrics.getTaskAvgElapsedTime();
-                waiter.busyWait(sleepingTime);
+                ThreadSleepUtils.sleepWithNonZeroMin(sleepingTime);
             } while (exceedingThroughput());
             metrics.writeQueuedCount.decrementAndGet();
         }
