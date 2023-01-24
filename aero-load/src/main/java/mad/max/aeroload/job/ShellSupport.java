@@ -18,9 +18,9 @@ import org.springframework.util.StopWatch;
 
 import java.util.Arrays;
 import java.util.List;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
@@ -120,6 +120,8 @@ public class ShellSupport {
     }
 
 
+    final ScheduledExecutorService executorService = Executors.newScheduledThreadPool(8);
+
     @SneakyThrows
     @ShellMethod("operation to insert an amount of records")
     public void testReads(@ShellOption(value = "c", defaultValue = "1000000") int count,
@@ -129,21 +131,15 @@ public class ShellSupport {
         this.clean();
         this.insertBulk(count, putMode);
 
-        final ScheduledExecutorService executorService = Executors.newSingleThreadScheduledExecutor();
         System.out.println("generating load of " + count * percent / 100 + " read every minute");
-        executorService.scheduleAtFixedRate(() -> {
-            //generating load
-            IntStream.range(0, count * percent / 100)
-                    .mapToObj(i -> ThreadLocalRandom.current().nextLong())
-                    .map(i -> getKey(UUIDUtils.nameUUIDFromNamespaceAndString(UUIDUtils.NAMESPACE, i + "")))
-                    .forEach(key -> CompletableFuture.runAsync(() -> {
-                        try {
-                            Thread.sleep(ThreadLocalRandom.current().nextLong(1000));
-                        } catch (InterruptedException e) {
-                        }
-                        client.get(client.readPolicyDefault, key);
-                    }));
-        }, 0, 1, TimeUnit.SECONDS);
+        //generating load
+        List<? extends ScheduledFuture<?>> load = IntStream.range(0, count * percent / 100)
+                .mapToObj(i -> ThreadLocalRandom.current().nextLong())
+                .map(i -> getKey(UUIDUtils.nameUUIDFromNamespaceAndString(UUIDUtils.NAMESPACE, i + "")))
+                .map(key ->
+                        executorService.scheduleAtFixedRate(() -> client.get(client.readPolicyDefault, key),
+                                ThreadLocalRandom.current().nextLong((long) count * percent / 100000), 1, TimeUnit.SECONDS)
+                ).toList();
 
         Key key = "NONE".equals(k) ? getKey(UUIDUtils.nameUUIDFromNamespaceAndString(UUIDUtils.NAMESPACE, ThreadLocalRandom.current().nextLong() + "")) : getKey(k);
         System.out.println("Getting 60 reads metrics 1 times per second");
@@ -155,9 +151,8 @@ public class ShellSupport {
             acumTime += ((System.currentTimeMillis()) - start);
             Thread.sleep(1000);
         }
-        executorService.shutdown();
-
         System.out.printf("avgTime of %s read-ops in a %s elements namespace with a %d percent of live load is %fms %n", 60, count, percent, (double) acumTime / 60);
+        load.forEach(f->f.cancel(true));
     }
 
 
