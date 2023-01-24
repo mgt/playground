@@ -7,17 +7,20 @@ import com.aerospike.client.cdt.ListOrder;
 import com.aerospike.client.cdt.ListPolicy;
 import com.aerospike.client.cdt.ListWriteFlags;
 import lombok.extern.slf4j.Slf4j;
+import mad.max.aeroload.model.base.AsyncConsumer;
+import mad.max.aeroload.model.base.AsyncProducer;
+import mad.max.aeroload.model.base.Pair;
 
 import java.util.Arrays;
 
 @Slf4j
-public class FileLineToAeroObjectsAdapter extends AsyncProducer<Pair<Key, Operation[]>> implements AsyncConsumer<Pair<String, String[]>> {
+public class FileLinesToAerospikeAdapter extends AsyncProducer<Pair<Key, Operation[]>> implements AsyncConsumer<Pair<String, String[]>> {
     public static final ListPolicy POLICY = new ListPolicy(ListOrder.UNORDERED, ListWriteFlags.ADD_UNIQUE | ListWriteFlags.NO_FAIL);
     public static final String SET_NAME = "audience_targeting_segments";
     public static final String NAMESPACE = "tempcache";
     public static final String BIN_SEGMENT_NAME = "list";
 
-    public FileLineToAeroObjectsAdapter(AsyncConsumer<Pair<Key, Operation[]>> consumer) {
+    public FileLinesToAerospikeAdapter(AsyncConsumer<Pair<Key, Operation[]>> consumer) {
         super(consumer);
     }
 

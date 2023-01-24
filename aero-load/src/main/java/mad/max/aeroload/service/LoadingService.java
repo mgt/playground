@@ -11,9 +11,9 @@ import com.aerospike.client.policy.RecordExistsAction;
 import com.aerospike.client.policy.WritePolicy;
 import lombok.extern.slf4j.Slf4j;
 import mad.max.aeroload.model.AerospikeAsyncOppsPerformer;
-import mad.max.aeroload.model.FileLineToAeroObjectsAdapter;
+import mad.max.aeroload.model.FileLinesToAerospikeAdapter;
 import mad.max.aeroload.model.FileLinesAsyncProducer;
-import mad.max.aeroload.model.FileReadingConfigs;
+import mad.max.aeroload.model.FileLinesReaderConfigs;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -41,12 +41,12 @@ public class LoadingService {
         try (AerospikeClient client = aerospikeClient(loadingProfile)) {
             AerospikeAsyncOppsPerformer loader = new AerospikeAsyncOppsPerformer(client, throttles, loadingProfile.getMaxThroughput(), loadingProfile.getMaxQueuedElements());
             loader.spinOff();
-            FileLineToAeroObjectsAdapter fileLineToAeroObjectsAdapter = new FileLineToAeroObjectsAdapter(loader);
-            FileLinesAsyncProducer fileLinesProducer = new FileLinesAsyncProducer(fileLineToAeroObjectsAdapter);
+            FileLinesToAerospikeAdapter fileLinesToAerospikeAdapter = new FileLinesToAerospikeAdapter(loader);
+            FileLinesAsyncProducer fileLinesProducer = new FileLinesAsyncProducer(fileLinesToAerospikeAdapter);
 
             FileLinesAsyncProducer.Parameters parameters =
                     new FileLinesAsyncProducer.Parameters(new File(filePath), 0, loadingProfile.getMaxLinesPerFile(), loadingProfile.getMaxErrorThreshold());
-            fileLinesProducer.run(parameters, FileReadingConfigs.DEFAULT);
+            fileLinesProducer.run(parameters, FileLinesReaderConfigs.DEFAULT);
             loader.waitToFinish();
 
             System.out.println(loader.stats());

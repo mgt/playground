@@ -1,4 +1,4 @@
-package mad.max.aeroload.model;
+package mad.max.aeroload.model.base;
 
 import lombok.AllArgsConstructor;
 

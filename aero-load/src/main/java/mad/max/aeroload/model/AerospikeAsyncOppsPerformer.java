@@ -11,6 +11,8 @@ import com.aerospike.client.async.Throttles;
 import com.aerospike.client.listener.RecordListener;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import mad.max.aeroload.model.base.AsyncConsumingTask;
+import mad.max.aeroload.model.base.Pair;
 import mad.max.aeroload.utils.ThreadSleepUtils;
 
 import java.text.SimpleDateFormat;

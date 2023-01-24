@@ -1,6 +1,9 @@
 package mad.max.aeroload.model;
 
 import lombok.extern.slf4j.Slf4j;
+import mad.max.aeroload.model.base.AsyncConsumer;
+import mad.max.aeroload.model.base.AsyncProducer;
+import mad.max.aeroload.model.base.Pair;
 import mad.max.aeroload.utils.ThreadSleepUtils;
 import org.springframework.util.Assert;
 import org.springframework.util.StringUtils;
@@ -21,8 +24,8 @@ public class FileLinesAsyncProducer extends AsyncProducer<Pair<String, String[]>
         super(consumer);
     }
 
-    public void run(Parameters parameters, FileReadingConfigs configs) {
-        FileReadingConfigs.ReadingConfig config = configs.getReadingConfig();
+    public void run(Parameters parameters, FileLinesReaderConfigs configs) {
+        FileLinesReaderConfigs.ReadingConfig config = configs.getReadingConfig();
         long lastReadLineNumber = -1;
         AtomicLong totalTime = new AtomicLong(0); //Keeps track of the total time spent in the process
         AtomicLong errorCount = new AtomicLong(0); //Amount of errors occurred here or down the chain
@@ -63,7 +66,7 @@ public class FileLinesAsyncProducer extends AsyncProducer<Pair<String, String[]>
                         .split(config.segmentDelimiter());
 
                 //Configuring observers, they are going to be called async
-                FileLinesProducerObserver observe = new FileLinesProducerObserver(okCount, errorCount, totalTime, fileName, keyString,
+                FileLinesAsyncObserver observe = new FileLinesAsyncObserver(okCount, errorCount, totalTime, fileName, keyString,
                         fileColumns[config.segmentColumnIndexInFile()], System.currentTimeMillis(), br.getLineNumber());
                 this.push(new Pair<>(keyString, listString), observe);
                 lastReadLineNumber = br.getLineNumber();
