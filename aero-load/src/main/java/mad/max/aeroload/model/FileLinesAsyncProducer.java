@@ -52,14 +52,13 @@ public class FileLinesAsyncProducer extends AsyncProducer<Pair<String, String[]>
                 log.trace("Read line {} from file:{} ", br.getLineNumber(), fileName);
                 String[] fileColumns = line.split(config.delimiter());
 
-                Assert.isTrue(errorCount.get() / Math.max(okCount.get(), 1) <= parameters.errorThreshold, ()->"Error threshold is higher than configured");
+                Assert.isTrue((double) errorCount.get() *100 / br.getLineNumber() <= parameters.errorThreshold, ()->"Error threshold is higher than configured");
                 //Validate the line we read, we should be able to get at least the segment list
                 if (!StringUtils.hasText(line) || fileColumns.length < config.segmentColumnIndexInFile()) {
                     errorCount.incrementAndGet();
                     log.error("Error processing file {}: Line:{} ", fileName, br.getLineNumber());
                     continue;
                 }
-
 
                 String keyString = fileColumns[0];
                 String[] listString = fileColumns[config.segmentColumnIndexInFile()]
