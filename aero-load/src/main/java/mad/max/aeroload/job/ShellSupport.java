@@ -6,6 +6,7 @@ import com.aerospike.client.Key;
 import com.aerospike.client.Operation;
 import com.aerospike.client.Record;
 import com.aerospike.client.cdt.ListOperation;
+import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import mad.max.aeroload.service.LoadingProfile;
 import mad.max.aeroload.service.LoadingService;
@@ -17,7 +18,11 @@ import org.springframework.util.StopWatch;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
@@ -60,7 +65,7 @@ public class ShellSupport {
     }
 
     @ShellMethod("operation to try limit on one key")
-    public void tryLimit(String k,@ShellOption(value = "c", defaultValue = "10000") int count, @ShellOption(value = "m", defaultValue = "v") String putMode) {
+    public void tryLimit(String k, @ShellOption(value = "c", defaultValue = "10000") int count, @ShellOption(value = "m", defaultValue = "v") String putMode) {
         Key key = getKey(k);
         Stream<String> str = IntStream.range(0, count)
                 .mapToObj(i -> "100" + String.format("%07d", i));
@@ -77,8 +82,8 @@ public class ShellSupport {
     }
 
     @ShellMethod("clean aerospike namespace and set")
-    public void clean(){
-        client.truncate(null, NAMESPACE, SET_NAME,null);
+    public void clean() {
+        client.truncate(null, NAMESPACE, SET_NAME, null);
     }
 
     @ShellMethod("operation to insert an amount of records")
@@ -88,7 +93,7 @@ public class ShellSupport {
         List<String> segments = Arrays.asList("1000000000,1000000001,1000000002,1000000003,1000000004,1000000005,1000000006,1000000007,1000000008,1000000009".split(","));
 
         List<Key> keys = IntStream.range(0, count)
-                .mapToObj(i-> ThreadLocalRandom.current().nextLong())
+                .mapToObj(i -> ThreadLocalRandom.current().nextLong())
                 .map(i -> getKey(UUIDUtils.nameUUIDFromNamespaceAndString(UUIDUtils.NAMESPACE, i + "")))
                 .toList();
 
@@ -113,5 +118,47 @@ public class ShellSupport {
         timeMeasure.stop();
         System.out.println("insert-force running time =" + timeMeasure.getLastTaskTimeMillis());
     }
+
+
+    @SneakyThrows
+    @ShellMethod("operation to insert an amount of records")
+    public void testReads(@ShellOption(value = "c", defaultValue = "1000000") int count,
+                          @ShellOption(value = "m", defaultValue = "v") String putMode,
+                          @ShellOption(value = "%", defaultValue = "20") int percent,
+                          @ShellOption(defaultValue = "NONE") String k) {
+        this.clean();
+        this.insertBulk(count, putMode);
+
+        final ScheduledExecutorService executorService = Executors.newSingleThreadScheduledExecutor();
+        System.out.println("generating load of " + count * percent / 100 + " read every minute");
+        executorService.scheduleAtFixedRate(() -> {
+            //generating load
+            IntStream.range(0, count * percent / 100)
+                    .mapToObj(i -> ThreadLocalRandom.current().nextLong())
+                    .map(i -> getKey(UUIDUtils.nameUUIDFromNamespaceAndString(UUIDUtils.NAMESPACE, i + "")))
+                    .forEach(key -> CompletableFuture.runAsync(() -> {
+                        try {
+                            Thread.sleep(ThreadLocalRandom.current().nextLong(1000));
+                        } catch (InterruptedException e) {
+                        }
+                        client.get(client.readPolicyDefault, key);
+                    }));
+        }, 0, 1, TimeUnit.SECONDS);
+
+        Key key = "NONE".equals(k) ? getKey(UUIDUtils.nameUUIDFromNamespaceAndString(UUIDUtils.NAMESPACE, ThreadLocalRandom.current().nextLong() + "")) : getKey(k);
+        System.out.println("Getting 60 reads metrics 1 times per second");
+        long acumTime = 0;
+        Thread.sleep(100);
+        for (int i = 0; i < 60; i++) {
+            long start = System.currentTimeMillis();
+            client.get(client.readPolicyDefault, key);
+            acumTime += ((System.currentTimeMillis()) - start);
+            Thread.sleep(1000);
+        }
+        executorService.shutdown();
+
+        System.out.printf("avgTime of %s read-ops in a %s elements namespace with a %d percent of live load is %fms %n", 60, count, percent, (double) acumTime / 60);
+    }
+
 
 }
