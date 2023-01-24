@@ -13,6 +13,7 @@ import lombok.extern.slf4j.Slf4j;
 import mad.max.aeroload.model.AerospikeAsyncOppsPerformer;
 import mad.max.aeroload.model.FileLineToAeroObjectsAdapter;
 import mad.max.aeroload.model.FileLinesAsyncProducer;
+import mad.max.aeroload.model.FileReadingConfigs;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -43,10 +44,9 @@ public class LoadingService {
             FileLineToAeroObjectsAdapter fileLineToAeroObjectsAdapter = new FileLineToAeroObjectsAdapter(loader);
             FileLinesAsyncProducer fileLinesProducer = new FileLinesAsyncProducer(fileLineToAeroObjectsAdapter);
 
-            FileLinesAsyncProducer.ReadingConfig readingConfig = FileLinesAsyncProducer.Configs.DEFAULT.getReadingConfig();
             FileLinesAsyncProducer.Parameters parameters =
                     new FileLinesAsyncProducer.Parameters(new File(filePath), 0, loadingProfile.getMaxLinesPerFile());
-            fileLinesProducer.run(parameters, readingConfig);
+            fileLinesProducer.run(parameters, FileReadingConfigs.DEFAULT);
             loader.waitToFinish();
 
             System.out.println(loader.stats());

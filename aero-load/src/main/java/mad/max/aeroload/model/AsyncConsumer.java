@@ -8,6 +8,6 @@ public interface AsyncConsumer<T> extends Consumer<T> {
 
     interface Observer {
         void onSuccess();
-        void onFail();
+        void onFail(String error);
     }
 }

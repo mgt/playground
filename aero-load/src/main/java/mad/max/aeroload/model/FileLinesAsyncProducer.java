@@ -1,6 +1,5 @@
 package mad.max.aeroload.model;
 
-import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import mad.max.aeroload.utils.ThreadSleepUtils;
 import org.springframework.util.StringUtils;
@@ -23,7 +22,8 @@ public class FileLinesAsyncProducer extends AsyncProducer<Pair<String, String[]>
         super(consumer);
     }
 
-    public void run(Parameters parameters, ReadingConfig config) {
+    public void run(Parameters parameters, FileReadingConfigs configs) {
+        FileReadingConfigs.ReadingConfig config = configs.getReadingConfig();
         long lastReadLineNumber = -1;
         AtomicLong totalTime = new AtomicLong(0); //Keeps track of the total time spent in the process
         AtomicLong errorCount = new AtomicLong(0); //Amount of errors occurred here or down the chain
@@ -63,7 +63,7 @@ public class FileLinesAsyncProducer extends AsyncProducer<Pair<String, String[]>
                         .split(config.segmentDelimiter());
 
                 //Configuring observers, they are going to be called async
-                Observe observe = new Observe(okCount, errorCount, totalTime, fileName, keyString, System.currentTimeMillis(), br.getLineNumber());
+                Observe observe = new Observe(okCount, errorCount, totalTime, fileName, keyString, fileColumns[config.segmentColumnIndexInFile()], System.currentTimeMillis(), br.getLineNumber());
                 this.push(new Pair<>(keyString, listString), observe);
                 lastReadLineNumber = br.getLineNumber();
             }
@@ -94,33 +94,20 @@ public class FileLinesAsyncProducer extends AsyncProducer<Pair<String, String[]>
 
     public record Parameters(File file, long start, long limit) {
     }
-    public record ReadingConfig(String delimiter, String segmentDelimiter, int segmentColumnIndexInFile, boolean hasHeader) {
-    }
-
-    @Getter
-    public enum Configs{
-        DEFAULT(new ReadingConfig("\t",",",1,false));
-
-        private final ReadingConfig readingConfig;
-
-        Configs(ReadingConfig readingConfig) {
-            this.readingConfig = readingConfig;
-        }
-    }
 
     private record Observe(AtomicLong okCount, AtomicLong errorCount, AtomicLong totalTime, String file,
-                           String keyString, long tick, long lineNumber) implements AsyncConsumer.Observer {
-        public void onFail() {
+                           String keyString, String fileColumn, long tick, long lineNumber) implements AsyncConsumer.Observer {
+        public void onFail(String error) {
             long timeSpentOnOperate = System.currentTimeMillis() - tick;
             totalTime.addAndGet(timeSpentOnOperate);
             errorCount.getAndIncrement();
-            String f = String.format("%s\t%s\n", keyString, lineNumber);
+            String f = String.format("%s\t%s\t%s\t%s%n", keyString, lineNumber, fileColumn, error);
             log.error("Error processing file {}. {} ", file, f);
 
             writeReport(f);
         }
 
-        private void writeReport(String f) {
+        private void writeReport( String f) {
             try (Writer wr = new FileWriter(file + ".error", true)) {
                 wr.write(f);
             } catch (IOException e) {//Sorry, nothing we can do about it.

@@ -5,6 +5,7 @@ import com.aerospike.client.AerospikeException;
 import com.aerospike.client.Key;
 import com.aerospike.client.Operation;
 import com.aerospike.client.Record;
+import com.aerospike.client.ResultCode;
 import com.aerospike.client.async.EventLoops;
 import com.aerospike.client.async.Throttles;
 import com.aerospike.client.listener.RecordListener;
@@ -14,6 +15,7 @@ import mad.max.aeroload.utils.ThreadSleepUtils;
 
 import java.text.SimpleDateFormat;
 import java.util.Date;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ThreadLocalRandom;
@@ -125,7 +127,7 @@ public class AerospikeAsyncOppsPerformer extends AsyncConsumingTask<Pair<Key, Op
             metrics.writeProcessingCount.decrementAndGet();
             metrics.writeCompletedCount.incrementAndGet();
             metrics.registerTime(time);
-            Optional.ofNullable(observer).ifPresent(h->CompletableFuture.runAsync(h::onSuccess));
+            Optional.ofNullable(observer).ifPresent(h -> CompletableFuture.runAsync(h::onSuccess));
         }
 
         // Error callback.
@@ -152,7 +154,8 @@ public class AerospikeAsyncOppsPerformer extends AsyncConsumingTask<Pair<Key, Op
                     //AerospikeException.AsyncQueueFull exception is thrown.
                     // Your application should respond by delaying commands in a non-event loop thread until eventLoop.getQueueSize() is sufficiently low.
             }
-            Optional.ofNullable(observer).ifPresent(h->CompletableFuture.runAsync(h::onFail));
+            if (Objects.nonNull(observer))
+                CompletableFuture.runAsync(() -> observer.onFail(ResultCode.getResultString(e.getResultCode())));
         }
     }
 
@@ -167,7 +170,7 @@ public class AerospikeAsyncOppsPerformer extends AsyncConsumingTask<Pair<Key, Op
         private final AtomicInteger writeKeyExists = new AtomicInteger();
         private final AtomicInteger writeHotKey = new AtomicInteger();
         private final AtomicInteger writeDeviceOverload = new AtomicInteger();
-        public AtomicLong writeRecordTooBig =  new AtomicLong();
+        public AtomicLong writeRecordTooBig = new AtomicLong();
         private final AtomicLong writeBestTime = new AtomicLong();
         private final AtomicLong writeWorstTime = new AtomicLong();
         private final AtomicBoolean slowDownFlag = new AtomicBoolean(false);
