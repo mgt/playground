@@ -19,6 +19,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
@@ -43,12 +44,12 @@ public class AerospikeAsyncOppsPerformer extends AsyncConsumingTask<Pair<Key, Op
         EventLoops eventLoops = client.getCluster().eventLoops;
 
 
-        if (metrics.slowDownFlag.get()) {//checking if we have an indication that the server is having problems
+        if (metrics.haltSignal.get()) {//checking if we have an indication that the server is having problems
             metrics.writeQueuedCount.incrementAndGet();
             do {
                 log.info("The slowdown flag is on, waiting for it to be cleared");
                 ThreadSleepUtils.sleepMaxTime();
-            } while (metrics.slowDownFlag.get());
+            } while (metrics.haltSignal.get());
             metrics.writeQueuedCount.decrementAndGet();
         }
 
@@ -137,22 +138,39 @@ public class AerospikeAsyncOppsPerformer extends AsyncConsumingTask<Pair<Key, Op
             log.warn("Operate failed: namespace={} set={} key={}", key.namespace, key.setName, key.userKey, e);
             metrics.writeProcessingCount.decrementAndGet();
             metrics.writeErrors.incrementAndGet();
+            boolean haltSignal = false;
             switch (e.getResultCode()) {
                 case 5:
                     metrics.writeKeyExists.incrementAndGet();
-                case 9:
+                case 9: {
                     metrics.writeTimeouts.incrementAndGet();
+                    haltSignal = true;
+                }
                 case 13: //AS_ERR_RECORD_TOO_BIG:
                     metrics.writeRecordTooBig.incrementAndGet();
-                case 14: //AS_ERR_KEY_BUSY
+                case 14: {//AS_ERR_KEY_BUSY
                     metrics.writeHotKey.incrementAndGet();
-                case 18:
+                    haltSignal = true;
+                }
+                case 18: {
                     metrics.writeDeviceOverload.incrementAndGet();
+                    haltSignal = true;
+                }
+            }
 
-                    //TODO identify which errors should change the slowDownFlag and what's the mechanism that will clean that flag
-                    //should consider that other threads might rise the flag too.
-                    //AerospikeException.AsyncQueueFull exception is thrown.
-                    // Your application should respond by delaying commands in a non-event loop thread until eventLoop.getQueueSize() is sufficiently low.
+            if (haltSignal && !metrics.haltSignal.get()) {
+                //TODO identify which errors should change the slowDownFlag and what's the mechanism that will clean that flag
+                //should consider that other threads might rise the flag too.
+                //AerospikeException.AsyncQueueFull exception is thrown.
+                // Your application should respond by delaying commands in a non-event loop thread until eventLoop.getQueueSize() is sufficiently low.
+                metrics.haltSignal.set(true);
+                log.warn("Error received signify load on aerospike server. Will wait for {} {}", 1, TimeUnit.SECONDS, e);
+                CompletableFuture.delayedExecutor(1, TimeUnit.SECONDS).execute(() -> {
+                            log.info("Restarting operations after {} {}", 1, TimeUnit.SECONDS);
+                            metrics.haltSignal.set(false);
+                        }
+                );
+
             }
             if (Objects.nonNull(observer))
                 CompletableFuture.runAsync(() -> observer.onFail(ResultCode.getResultString(e.getResultCode())));
@@ -173,7 +191,7 @@ public class AerospikeAsyncOppsPerformer extends AsyncConsumingTask<Pair<Key, Op
         public AtomicLong writeRecordTooBig = new AtomicLong();
         private final AtomicLong writeBestTime = new AtomicLong();
         private final AtomicLong writeWorstTime = new AtomicLong();
-        private final AtomicBoolean slowDownFlag = new AtomicBoolean(false);
+        private final AtomicBoolean haltSignal = new AtomicBoolean(false);
         private final long startTime;
 
         public void registerTime(long time) {

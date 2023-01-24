@@ -2,6 +2,7 @@ package mad.max.aeroload.model;
 
 import lombok.extern.slf4j.Slf4j;
 import mad.max.aeroload.utils.ThreadSleepUtils;
+import org.springframework.util.Assert;
 import org.springframework.util.StringUtils;
 
 import java.io.File;
@@ -51,6 +52,7 @@ public class FileLinesAsyncProducer extends AsyncProducer<Pair<String, String[]>
                 log.trace("Read line {} from file:{} ", br.getLineNumber(), fileName);
                 String[] fileColumns = line.split(config.delimiter());
 
+                Assert.isTrue(errorCount.get() / Math.max(okCount.get(), 1) <= parameters.errorThreshold, ()->"Error threshold is higher than configured");
                 //Validate the line we read, we should be able to get at least the segment list
                 if (!StringUtils.hasText(line) || fileColumns.length < config.segmentColumnIndexInFile()) {
                     errorCount.incrementAndGet();
@@ -58,12 +60,14 @@ public class FileLinesAsyncProducer extends AsyncProducer<Pair<String, String[]>
                     continue;
                 }
 
+
                 String keyString = fileColumns[0];
                 String[] listString = fileColumns[config.segmentColumnIndexInFile()]
                         .split(config.segmentDelimiter());
 
                 //Configuring observers, they are going to be called async
-                Observe observe = new Observe(okCount, errorCount, totalTime, fileName, keyString, fileColumns[config.segmentColumnIndexInFile()], System.currentTimeMillis(), br.getLineNumber());
+                Observe observe = new Observe(okCount, errorCount, totalTime, fileName, keyString,
+                        fileColumns[config.segmentColumnIndexInFile()], System.currentTimeMillis(), br.getLineNumber());
                 this.push(new Pair<>(keyString, listString), observe);
                 lastReadLineNumber = br.getLineNumber();
             }
@@ -92,7 +96,7 @@ public class FileLinesAsyncProducer extends AsyncProducer<Pair<String, String[]>
         return Files.newInputStream(file.toPath());
     }
 
-    public record Parameters(File file, long start, long limit) {
+    public record Parameters(File file, long start, long limit, long errorThreshold) {
     }
 
     private record Observe(AtomicLong okCount, AtomicLong errorCount, AtomicLong totalTime, String file,

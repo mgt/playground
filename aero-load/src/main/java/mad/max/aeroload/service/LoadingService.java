@@ -45,7 +45,7 @@ public class LoadingService {
             FileLinesAsyncProducer fileLinesProducer = new FileLinesAsyncProducer(fileLineToAeroObjectsAdapter);
 
             FileLinesAsyncProducer.Parameters parameters =
-                    new FileLinesAsyncProducer.Parameters(new File(filePath), 0, loadingProfile.getMaxLinesPerFile());
+                    new FileLinesAsyncProducer.Parameters(new File(filePath), 0, loadingProfile.getMaxLinesPerFile(), loadingProfile.getMaxErrorThreshold());
             fileLinesProducer.run(parameters, FileReadingConfigs.DEFAULT);
             loader.waitToFinish();
 
