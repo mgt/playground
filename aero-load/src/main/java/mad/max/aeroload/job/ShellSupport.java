@@ -27,11 +27,11 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
-import static mad.max.aeroload.model.FileLinesToAerospikeAdapter.BIN_SEGMENT_NAME;
 import static mad.max.aeroload.model.FileLinesToAerospikeAdapter.NAMESPACE;
 import static mad.max.aeroload.model.FileLinesToAerospikeAdapter.POLICY;
 import static mad.max.aeroload.model.FileLinesToAerospikeAdapter.SET_NAME;
 import static mad.max.aeroload.model.FileLinesToAerospikeAdapter.getKey;
+import static mad.max.aeroload.service.LoadingService.SEGMENT_BIN_NAME;
 
 @Slf4j
 @ShellComponent
@@ -59,7 +59,7 @@ public class ShellSupport {
         Key key = getKey(k);
         Record record = client.get(client.readPolicyDefault, key);
         System.out.printf("key:%s%n", k);
-        System.out.printf("size:%d%n", record.getList(BIN_SEGMENT_NAME).size());
+        System.out.printf("size:%d%n", record.getList(SEGMENT_BIN_NAME).size());
         System.out.printf("ttl:%d%n", record.getTimeToLive());
         System.out.println(record);
     }
@@ -70,12 +70,12 @@ public class ShellSupport {
         Stream<String> str = IntStream.range(0, count)
                 .mapToObj(i -> "100" + String.format("%07d", i));
         if ("string".equals(putMode)) {
-            client.put(client.writePolicyDefault, key, new Bin(BIN_SEGMENT_NAME, str.collect(Collectors.joining(","))));
+            client.put(client.writePolicyDefault, key, new Bin(SEGMENT_BIN_NAME, str.collect(Collectors.joining(","))));
         } else {
             Operation[] operations =
                     str
                             .map(com.aerospike.client.Value::get)
-                            .map(v -> ListOperation.append(POLICY, BIN_SEGMENT_NAME, v))
+                            .map(v -> ListOperation.append(POLICY, SEGMENT_BIN_NAME, v))
                             .toArray(Operation[]::new);
             client.operate(client.writePolicyDefault, key, operations);
         }
@@ -101,14 +101,14 @@ public class ShellSupport {
         for (Key key : keys) {
 
             if ("string".equals(putMode)) {
-                client.put(client.writePolicyDefault, key, new Bin(BIN_SEGMENT_NAME,
+                client.put(client.writePolicyDefault, key, new Bin(SEGMENT_BIN_NAME,
                         String.join(",", segments.subList(0, ThreadLocalRandom.current().nextInt(1, segments.size())))));
             } else {
                 Operation[] operations =
                         segments.subList(0, ThreadLocalRandom.current().nextInt(1, segments.size()))
                                 .stream()
                                 .map(com.aerospike.client.Value::get)
-                                .map(v -> ListOperation.append(POLICY, BIN_SEGMENT_NAME, v))
+                                .map(v -> ListOperation.append(POLICY, SEGMENT_BIN_NAME, v))
                                 .toArray(Operation[]::new);
                 client.operate(client.writePolicyDefault, key, operations);
             }

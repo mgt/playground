@@ -10,15 +10,15 @@ import lombok.extern.slf4j.Slf4j;
 import mad.max.aeroload.model.base.AsyncConsumer;
 import mad.max.aeroload.model.base.AsyncProducer;
 import mad.max.aeroload.model.base.Pair;
+import mad.max.aeroload.model.base.Triad;
 
 import java.util.Arrays;
 
 @Slf4j
-public class FileLinesToAerospikeAdapter extends AsyncProducer<Pair<Key, Operation[]>> implements AsyncConsumer<Pair<String, String[]>> {
+public class FileLinesToAerospikeAdapter extends AsyncProducer<Pair<Key, Operation[]>> implements AsyncConsumer<Triad<String, String[],String>> {
     public static final ListPolicy POLICY = new ListPolicy(ListOrder.UNORDERED, ListWriteFlags.ADD_UNIQUE | ListWriteFlags.NO_FAIL);
     public static final String SET_NAME = "audience_targeting_segments";
     public static final String NAMESPACE = "tempcache";
-    public static final String BIN_SEGMENT_NAME = "list";
 
     public FileLinesToAerospikeAdapter(AsyncConsumer<Pair<Key, Operation[]>> consumer) {
         super(consumer);
@@ -28,24 +28,20 @@ public class FileLinesToAerospikeAdapter extends AsyncProducer<Pair<Key, Operati
         return new Key(NAMESPACE, SET_NAME, keyString);
     }
 
-    private static Operation[] getOperations(String... segmentsArray) {
+    private static Operation[] getOperations(String binName, String... segmentsArray) {
         return Arrays.stream(segmentsArray)
                 .map(com.aerospike.client.Value::get)
-                .map(v -> ListOperation.append(POLICY, BIN_SEGMENT_NAME, v))
+                .map(v -> ListOperation.append(POLICY, binName, v))
                 .toArray(Operation[]::new);
     }
 
     @Override
-    public void accept(Pair<String, String[]> pair, Observer observer) {
-        try {
-            this.push(new Pair<>(getKey(pair.getA()), getOperations(pair.getB())), observer);
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
+    public void accept(Triad<String, String[],String> triad, Observer observer) {
+        this.push(new Pair<>(getKey(triad.getA()), getOperations(triad.getC(), triad.getB())), observer);
     }
 
     @Override
-    public void accept(Pair<String, String[]> pair) {
-        this.accept(pair, null);
+    public void accept(Triad<String, String[],String> triad) {
+        this.accept(triad, null);
     }
 }

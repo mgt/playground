@@ -3,7 +3,7 @@ package mad.max.aeroload.model;
 import lombok.extern.slf4j.Slf4j;
 import mad.max.aeroload.model.base.AsyncConsumer;
 import mad.max.aeroload.model.base.AsyncProducer;
-import mad.max.aeroload.model.base.Pair;
+import mad.max.aeroload.model.base.Triad;
 import mad.max.aeroload.utils.ThreadSleepUtils;
 import org.springframework.util.Assert;
 import org.springframework.util.StringUtils;
@@ -18,13 +18,13 @@ import java.nio.file.Files;
 import java.util.concurrent.atomic.AtomicLong;
 
 @Slf4j
-public class FileLinesAsyncProducer extends AsyncProducer<Pair<String, String[]>> {
+public class FileLinesAsyncProducer extends AsyncProducer<Triad<String, String[],String>> {
 
-    public FileLinesAsyncProducer(AsyncConsumer<Pair<String, String[]>> consumer) {
+    public FileLinesAsyncProducer(AsyncConsumer<Triad<String, String[],String>> consumer) {
         super(consumer);
     }
 
-    public void run(Parameters parameters, FileLinesReaderConfigs configs) {
+    public void run(FileLinesAsyncParameters parameters, FileLinesReaderConfigs configs) {
         FileLinesReaderConfigs.ReadingConfig config = configs.getReadingConfig();
         long lastReadLineNumber = -1;
         AtomicLong totalTime = new AtomicLong(0); //Keeps track of the total time spent in the process
@@ -53,7 +53,7 @@ public class FileLinesAsyncProducer extends AsyncProducer<Pair<String, String[]>
                 log.trace("Read line {} from file:{} ", br.getLineNumber(), fileName);
                 String[] fileColumns = line.split(config.delimiter());
 
-                Assert.isTrue((double) errorCount.get() *100 / br.getLineNumber() <= parameters.errorThreshold, ()->"Error threshold is higher than configured");
+                Assert.isTrue((double) errorCount.get() *100 / br.getLineNumber() <= parameters.errorThreshold(), ()->"Error threshold is higher than configured");
                 //Validate the line we read, we should be able to get at least the segment list
                 if (!StringUtils.hasText(line) || fileColumns.length < config.segmentColumnIndexInFile()) {
                     errorCount.incrementAndGet();
@@ -68,7 +68,7 @@ public class FileLinesAsyncProducer extends AsyncProducer<Pair<String, String[]>
                 //Configuring observers, they are going to be called async
                 FileLinesAsyncObserver observe = new FileLinesAsyncObserver(okCount, errorCount, totalTime, fileName, keyString,
                         fileColumns[config.segmentColumnIndexInFile()], System.currentTimeMillis(), br.getLineNumber());
-                this.push(new Pair<>(keyString, listString), observe);
+                this.push(new Triad<>(keyString, listString, parameters.binName()), observe);
                 lastReadLineNumber = br.getLineNumber();
             }
         } catch (Exception e) {//Unrecoverable scenario, we don't know the nature of the error
@@ -94,9 +94,6 @@ public class FileLinesAsyncProducer extends AsyncProducer<Pair<String, String[]>
 
     private static InputStream getInputStream(File file) throws IOException {
         return Files.newInputStream(file.toPath());
-    }
-
-    public record Parameters(File file, long start, long limit, long errorThreshold) {
     }
 
 }

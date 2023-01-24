@@ -11,9 +11,10 @@ import com.aerospike.client.policy.RecordExistsAction;
 import com.aerospike.client.policy.WritePolicy;
 import lombok.extern.slf4j.Slf4j;
 import mad.max.aeroload.model.AerospikeAsyncOppsPerformer;
-import mad.max.aeroload.model.FileLinesToAerospikeAdapter;
+import mad.max.aeroload.model.FileLinesAsyncParameters;
 import mad.max.aeroload.model.FileLinesAsyncProducer;
 import mad.max.aeroload.model.FileLinesReaderConfigs;
+import mad.max.aeroload.model.FileLinesToAerospikeAdapter;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -22,6 +23,7 @@ import java.io.File;
 @Slf4j
 @Component
 public class LoadingService {
+    public static final String SEGMENT_BIN_NAME = "list";
     @Value("${aerospike.host:localhost}")
     private String host;
     @Value("${aerospike.port:3000}")
@@ -44,8 +46,8 @@ public class LoadingService {
             FileLinesToAerospikeAdapter fileLinesToAerospikeAdapter = new FileLinesToAerospikeAdapter(loader);
             FileLinesAsyncProducer fileLinesProducer = new FileLinesAsyncProducer(fileLinesToAerospikeAdapter);
 
-            FileLinesAsyncProducer.Parameters parameters =
-                    new FileLinesAsyncProducer.Parameters(new File(filePath), 0, loadingProfile.getMaxLinesPerFile(), loadingProfile.getMaxErrorThreshold());
+            FileLinesAsyncParameters parameters =
+                    new FileLinesAsyncParameters(new File(filePath), 0, loadingProfile.getMaxLinesPerFile(), loadingProfile.getMaxErrorThreshold(), SEGMENT_BIN_NAME);
             fileLinesProducer.run(parameters, FileLinesReaderConfigs.DEFAULT);
             loader.waitToFinish();
 
