@@ -1,4 +1,4 @@
-package mad.max.aeroload.model;
+package mad.max.aeroload.model.transformer;
 
 import com.aerospike.client.Key;
 import com.aerospike.client.Operation;
@@ -7,8 +7,8 @@ import com.aerospike.client.cdt.ListOrder;
 import com.aerospike.client.cdt.ListPolicy;
 import com.aerospike.client.cdt.ListWriteFlags;
 import lombok.extern.slf4j.Slf4j;
-import mad.max.aeroload.model.base.AsyncConsumer;
-import mad.max.aeroload.model.base.AsyncProducer;
+import mad.max.aeroload.model.consumer.base.AsyncConsumer;
+import mad.max.aeroload.model.producer.base.AsyncProducer;
 import mad.max.aeroload.model.base.Pair;
 import mad.max.aeroload.model.base.Triad;
 
@@ -37,7 +37,7 @@ public class FileLinesToAerospikeAdapter extends AsyncProducer<Pair<Key, Operati
 
     @Override
     public void accept(Triad<String, String[],String> triad, Observer observer) {
-        this.push(new Pair<>(getKey(triad.getA()), getOperations(triad.getC(), triad.getB())), observer);
+        this.push(new Pair<>(getKey(triad.a()), getOperations(triad.c(), triad.b())), observer);
     }
 
     @Override

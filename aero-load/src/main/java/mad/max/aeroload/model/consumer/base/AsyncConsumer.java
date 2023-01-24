@@ -1,4 +1,4 @@
-package mad.max.aeroload.model.base;
+package mad.max.aeroload.model.consumer.base;
 
 import java.util.function.Consumer;
 

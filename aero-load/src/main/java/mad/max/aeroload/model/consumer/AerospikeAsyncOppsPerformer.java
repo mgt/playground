@@ -1,4 +1,4 @@
-package mad.max.aeroload.model;
+package mad.max.aeroload.model.consumer;
 
 import com.aerospike.client.AerospikeClient;
 import com.aerospike.client.AerospikeException;
@@ -11,7 +11,7 @@ import com.aerospike.client.async.Throttles;
 import com.aerospike.client.listener.RecordListener;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import mad.max.aeroload.model.base.AsyncConsumingTask;
+import mad.max.aeroload.model.consumer.base.AsyncConsumingTask;
 import mad.max.aeroload.model.base.Pair;
 import mad.max.aeroload.utils.ThreadSleepUtils;
 
@@ -94,8 +94,8 @@ public class AerospikeAsyncOppsPerformer extends AsyncConsumingTask<Pair<Key, Op
 
 
             //Aerospike async operate command
-            AerospikeOperateListener listener = new AerospikeOperateListener(product.object().getA(), product.observer(), eventLoopIndex, startTime);
-            client.operate(eventLoops.get(eventLoopIndex), listener, client.writePolicyDefault, product.object().getA(), product.object().getB());
+            AerospikeOperateListener listener = new AerospikeOperateListener(product.object().a(), product.observer(), eventLoopIndex, startTime);
+            client.operate(eventLoops.get(eventLoopIndex), listener, client.writePolicyDefault, product.object().a(), product.object().b());
         }
     }
 

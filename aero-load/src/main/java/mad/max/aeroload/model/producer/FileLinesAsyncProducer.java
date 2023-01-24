@@ -1,8 +1,8 @@
-package mad.max.aeroload.model;
+package mad.max.aeroload.model.producer;
 
 import lombok.extern.slf4j.Slf4j;
-import mad.max.aeroload.model.base.AsyncConsumer;
-import mad.max.aeroload.model.base.AsyncProducer;
+import mad.max.aeroload.model.consumer.base.AsyncConsumer;
+import mad.max.aeroload.model.producer.base.AsyncProducer;
 import mad.max.aeroload.model.base.Triad;
 import mad.max.aeroload.utils.ThreadSleepUtils;
 import org.springframework.util.Assert;

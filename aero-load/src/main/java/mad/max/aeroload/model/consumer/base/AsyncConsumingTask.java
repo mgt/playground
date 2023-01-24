@@ -1,8 +1,9 @@
-package mad.max.aeroload.model.base;
+package mad.max.aeroload.model.consumer.base;
 
 import lombok.AllArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
+import mad.max.aeroload.model.base.SpinOffTask;
 import mad.max.aeroload.utils.ThreadSleepUtils;
 
 import java.util.concurrent.ArrayBlockingQueue;

@@ -10,11 +10,11 @@ import com.aerospike.client.policy.ClientPolicy;
 import com.aerospike.client.policy.RecordExistsAction;
 import com.aerospike.client.policy.WritePolicy;
 import lombok.extern.slf4j.Slf4j;
-import mad.max.aeroload.model.AerospikeAsyncOppsPerformer;
-import mad.max.aeroload.model.FileLinesAsyncParameters;
-import mad.max.aeroload.model.FileLinesAsyncProducer;
-import mad.max.aeroload.model.FileLinesReaderConfigs;
-import mad.max.aeroload.model.FileLinesToAerospikeAdapter;
+import mad.max.aeroload.model.consumer.AerospikeAsyncOppsPerformer;
+import mad.max.aeroload.model.producer.FileLinesAsyncParameters;
+import mad.max.aeroload.model.producer.FileLinesAsyncProducer;
+import mad.max.aeroload.model.producer.FileLinesReaderConfigs;
+import mad.max.aeroload.model.transformer.FileLinesToAerospikeAdapter;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 

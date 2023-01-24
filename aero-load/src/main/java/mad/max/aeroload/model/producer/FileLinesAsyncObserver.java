@@ -1,7 +1,7 @@
-package mad.max.aeroload.model;
+package mad.max.aeroload.model.producer;
 
 import lombok.extern.slf4j.Slf4j;
-import mad.max.aeroload.model.base.AsyncConsumer;
+import mad.max.aeroload.model.consumer.base.AsyncConsumer;
 
 import java.io.FileWriter;
 import java.io.IOException;

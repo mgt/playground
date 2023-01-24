@@ -1,4 +1,4 @@
-package mad.max.aeroload.model;
+package mad.max.aeroload.model.producer;
 
 import lombok.Getter;
 
