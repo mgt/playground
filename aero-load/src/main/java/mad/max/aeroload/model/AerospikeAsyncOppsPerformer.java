@@ -14,6 +14,7 @@ import mad.max.aeroload.utils.ThreadSleepUtils;
 
 import java.text.SimpleDateFormat;
 import java.util.Date;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -21,14 +22,13 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
 @Slf4j
-public class AerospikeLoader extends AsyncConsumingTask<Product<Key, Operation[]>> {
+public class AerospikeAsyncOppsPerformer extends AsyncConsumingTask<Pair<Key, Operation[]>> {
     private final AerospikeClient client;
     private final Throttles throttles;
     private final AerospikeLoadingMetrics metrics;
     private final int maxThroughput;
 
-
-    public AerospikeLoader(AerospikeClient client, Throttles throttles, int maxThroughput, int maxCommands) {
+    public AerospikeAsyncOppsPerformer(AerospikeClient client, Throttles throttles, int maxThroughput, int maxCommands) {
         super(maxCommands);
         this.client = client;
         this.throttles = throttles;
@@ -36,7 +36,7 @@ public class AerospikeLoader extends AsyncConsumingTask<Product<Key, Operation[]
         this.maxThroughput = maxThroughput;
     }
 
-    protected void offer(Product<Key, Operation[]> product) throws InterruptedException {
+    protected void offer(AsyncDecorator<Pair<Key, Operation[]>> product) throws InterruptedException {
         long startTime = System.currentTimeMillis();
         EventLoops eventLoops = client.getCluster().eventLoops;
 
@@ -89,13 +89,9 @@ public class AerospikeLoader extends AsyncConsumingTask<Product<Key, Operation[]
 
 
             //Aerospike async operate command
-            AerospikeLoaderWriteListener listener = new AerospikeLoaderWriteListener(product, eventLoopIndex, startTime);
-            client.operate(eventLoops.get(eventLoopIndex), listener, client.writePolicyDefault, product.getA(), product.getB());
+            AerospikeOperateListener listener = new AerospikeOperateListener(product.object().getA(), product.observer(), eventLoopIndex, startTime);
+            client.operate(eventLoops.get(eventLoopIndex), listener, client.writePolicyDefault, product.object().getA(), product.object().getB());
         }
-    }
-
-    @Override
-    protected void interruptedError() {
     }
 
     private boolean exceedingThroughput() {
@@ -106,17 +102,15 @@ public class AerospikeLoader extends AsyncConsumingTask<Product<Key, Operation[]
         return metrics.getStats();
     }
 
-    private class AerospikeLoaderWriteListener implements RecordListener {
+    private class AerospikeOperateListener implements RecordListener {
         private final Key key;
         private final int eventLoopIndex;
         private final long startTime;
-        private final Runnable onSuccess;
-        private final Runnable onFailure;
+        private final Observer observer;
 
-        public AerospikeLoaderWriteListener(Product<Key, Operation[]> p, int eventLoopIndex, long startTime) {
-            this.key = p.getA();
-            this.onSuccess = p.getSuccessHandler();
-            this.onFailure = p.getFailureHandler();
+        public AerospikeOperateListener(Key key, Observer observer, int eventLoopIndex, long startTime) {
+            this.key = key;
+            this.observer = observer;
             this.eventLoopIndex = eventLoopIndex;
             this.startTime = startTime;
         }
@@ -131,10 +125,11 @@ public class AerospikeLoader extends AsyncConsumingTask<Product<Key, Operation[]
             metrics.writeProcessingCount.decrementAndGet();
             metrics.writeCompletedCount.incrementAndGet();
             metrics.registerTime(time);
-            CompletableFuture.runAsync(onSuccess);
+            Optional.ofNullable(observer).ifPresent(h->CompletableFuture.runAsync(h::onSuccess));
         }
 
         // Error callback.
+        @Override
         public void onFailure(AerospikeException e) {
             throttles.addSlot(eventLoopIndex, 1);
             log.warn("Operate failed: namespace={} set={} key={}", key.namespace, key.setName, key.userKey, e);
@@ -157,7 +152,7 @@ public class AerospikeLoader extends AsyncConsumingTask<Product<Key, Operation[]
                     //AerospikeException.AsyncQueueFull exception is thrown.
                     // Your application should respond by delaying commands in a non-event loop thread until eventLoop.getQueueSize() is sufficiently low.
             }
-            CompletableFuture.runAsync(onFailure);
+            Optional.ofNullable(observer).ifPresent(h->CompletableFuture.runAsync(h::onFail));
         }
     }
 

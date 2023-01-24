@@ -15,12 +15,11 @@ import java.io.Writer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.function.Consumer;
 
 @Slf4j
-public class FileLinesProducer extends Producer<Product<String, String[]>>{
+public class FileLinesAsyncProducer extends AsyncProducer<Pair<String, String[]>> {
 
-    public FileLinesProducer(Consumer<Product<String, String[]>> consumer) {
+    public FileLinesAsyncProducer(AsyncConsumer<Pair<String, String[]>> consumer) {
         super(consumer);
     }
 
@@ -63,9 +62,9 @@ public class FileLinesProducer extends Producer<Product<String, String[]>>{
                 String[] listString = fileColumns[config.segmentColumnIndexInFile()]
                         .split(config.segmentDelimiter());
 
-                //Configuring handlers, they are going to be called async
-                Handling handling = new Handling(okCount, errorCount, totalTime, fileName, keyString, System.currentTimeMillis(), br.getLineNumber());
-                this.push(new Product<>(keyString, listString, handling::handleSuccess, handling::handleFail));
+                //Configuring observers, they are going to be called async
+                Observe observe = new Observe(okCount, errorCount, totalTime, fileName, keyString, System.currentTimeMillis(), br.getLineNumber());
+                this.push(new Pair<>(keyString, listString), observe);
                 lastReadLineNumber = br.getLineNumber();
             }
         } catch (Exception e) {//Unrecoverable scenario, we don't know the nature of the error
@@ -109,9 +108,9 @@ public class FileLinesProducer extends Producer<Product<String, String[]>>{
         }
     }
 
-    private record Handling(AtomicLong okCount, AtomicLong errorCount, AtomicLong totalTime, String file,
-                            String keyString, long tick, long lineNumber) {
-        public void handleFail() {
+    private record Observe(AtomicLong okCount, AtomicLong errorCount, AtomicLong totalTime, String file,
+                           String keyString, long tick, long lineNumber) implements AsyncConsumer.Observer {
+        public void onFail() {
             long timeSpentOnOperate = System.currentTimeMillis() - tick;
             totalTime.addAndGet(timeSpentOnOperate);
             errorCount.getAndIncrement();
@@ -129,7 +128,7 @@ public class FileLinesProducer extends Producer<Product<String, String[]>>{
             }
         }
 
-        public void handleSuccess() {
+        public void onSuccess() {
             long timeSpentOnOperate = System.currentTimeMillis() - tick;
             totalTime.accumulateAndGet(timeSpentOnOperate, Math::addExact);
             okCount.incrementAndGet();

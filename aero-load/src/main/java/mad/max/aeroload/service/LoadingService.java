@@ -10,9 +10,9 @@ import com.aerospike.client.policy.ClientPolicy;
 import com.aerospike.client.policy.RecordExistsAction;
 import com.aerospike.client.policy.WritePolicy;
 import lombok.extern.slf4j.Slf4j;
-import mad.max.aeroload.model.AerospikeLoader;
+import mad.max.aeroload.model.AerospikeAsyncOppsPerformer;
 import mad.max.aeroload.model.FileLineToAeroObjectsAdapter;
-import mad.max.aeroload.model.FileLinesProducer;
+import mad.max.aeroload.model.FileLinesAsyncProducer;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -38,14 +38,14 @@ public class LoadingService {
 
 
         try (AerospikeClient client = aerospikeClient(loadingProfile)) {
-            AerospikeLoader loader = new AerospikeLoader(client, throttles, loadingProfile.getMaxThroughput(), loadingProfile.getMaxQueuedElements());
+            AerospikeAsyncOppsPerformer loader = new AerospikeAsyncOppsPerformer(client, throttles, loadingProfile.getMaxThroughput(), loadingProfile.getMaxQueuedElements());
             loader.spinOff();
             FileLineToAeroObjectsAdapter fileLineToAeroObjectsAdapter = new FileLineToAeroObjectsAdapter(loader);
-            FileLinesProducer fileLinesProducer = new FileLinesProducer(fileLineToAeroObjectsAdapter);
+            FileLinesAsyncProducer fileLinesProducer = new FileLinesAsyncProducer(fileLineToAeroObjectsAdapter);
 
-            FileLinesProducer.ReadingConfig readingConfig = FileLinesProducer.Configs.DEFAULT.getReadingConfig();
-            FileLinesProducer.Parameters parameters =
-                    new FileLinesProducer.Parameters(new File(filePath), 0, loadingProfile.getMaxLinesPerFile());
+            FileLinesAsyncProducer.ReadingConfig readingConfig = FileLinesAsyncProducer.Configs.DEFAULT.getReadingConfig();
+            FileLinesAsyncProducer.Parameters parameters =
+                    new FileLinesAsyncProducer.Parameters(new File(filePath), 0, loadingProfile.getMaxLinesPerFile());
             fileLinesProducer.run(parameters, readingConfig);
             loader.waitToFinish();
 

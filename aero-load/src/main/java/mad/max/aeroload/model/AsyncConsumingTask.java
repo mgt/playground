@@ -7,12 +7,11 @@ import mad.max.aeroload.utils.ThreadSleepUtils;
 
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
-import java.util.function.Consumer;
 
 @AllArgsConstructor
 @Slf4j
-public abstract class AsyncConsumingTask<T> extends SpinOffTask implements Consumer<T> {
-    private final BlockingQueue<T> queue;
+public abstract class AsyncConsumingTask<T> extends SpinOffTask implements AsyncConsumer<T> {
+    private final BlockingQueue<AsyncDecorator<T>> queue;
 
     public AsyncConsumingTask(int maxQueuedElements) {
         this.queue = new ArrayBlockingQueue<>(maxQueuedElements);
@@ -21,13 +20,12 @@ public abstract class AsyncConsumingTask<T> extends SpinOffTask implements Consu
     public void run() {
         while (!isFinished()) {
             try {
-                T take = queue.take();
+                AsyncDecorator<T> take = queue.take();
                 this.offer(take);
             } catch (InterruptedException e) {
                 if (queue.size() == 0)
                     setFinished();
                 else {
-                    this.interruptedError();
                     throw new RuntimeException(e);
                 }
             }
@@ -37,12 +35,15 @@ public abstract class AsyncConsumingTask<T> extends SpinOffTask implements Consu
     @SneakyThrows
     public void accept(T product) {
         log.trace("adding element to the queue");
-        queue.put(product);
+        queue.put(new AsyncDecorator<>(product, null));
     }
 
-    protected abstract void offer(T product) throws InterruptedException;
-
-    protected abstract void interruptedError();
+    @SneakyThrows
+    public void accept(T product, Observer observer) {
+        log.trace("adding element to the queue");
+        queue.put(new AsyncDecorator<>(product, observer));
+    }
+    protected abstract void offer(AsyncDecorator<T> product) throws InterruptedException;
 
     public void waitToFinish() {
         while (!isFinished() && !queue.isEmpty()) {
@@ -58,5 +59,7 @@ public abstract class AsyncConsumingTask<T> extends SpinOffTask implements Consu
         super.close();
     }
 
+
+    public record AsyncDecorator<T>(T object, Observer observer) {}
 
 }

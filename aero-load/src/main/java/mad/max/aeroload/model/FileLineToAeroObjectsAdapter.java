@@ -9,17 +9,16 @@ import com.aerospike.client.cdt.ListWriteFlags;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.Arrays;
-import java.util.function.Consumer;
 
 @Slf4j
-public class FileLineToAeroObjectsAdapter extends Producer<Product<Key, Operation[]>> implements Consumer<Product<String, String[]>> {
+public class FileLineToAeroObjectsAdapter extends AsyncProducer<Pair<Key, Operation[]>> implements AsyncConsumer<Pair<String, String[]>> {
     public static final ListPolicy POLICY = new ListPolicy(ListOrder.UNORDERED, ListWriteFlags.ADD_UNIQUE | ListWriteFlags.NO_FAIL);
     public static final String SET_NAME = "audience_targeting_segments";
     public static final String NAMESPACE = "tempcache";
     public static final String BIN_SEGMENT_NAME = "list";
 
-    public FileLineToAeroObjectsAdapter(Consumer<Product<Key, Operation[]>> consumer) {
-        super( consumer);
+    public FileLineToAeroObjectsAdapter(AsyncConsumer<Pair<Key, Operation[]>> consumer) {
+        super(consumer);
     }
 
     public static Key getKey(String keyString) {
@@ -34,13 +33,16 @@ public class FileLineToAeroObjectsAdapter extends Producer<Product<Key, Operatio
     }
 
     @Override
-    public void accept(Product<String, String[]> product) {
+    public void accept(Pair<String, String[]> pair, Observer observer) {
         try {
-            this.push(new Product<>(getKey(product.getA()), getOperations(product.getB()),
-                    product.getSuccessHandler(), product.getFailureHandler()));
+            this.push(new Pair<>(getKey(pair.getA()), getOperations(pair.getB())), observer);
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
     }
 
+    @Override
+    public void accept(Pair<String, String[]> pair) {
+        this.accept(pair, null);
+    }
 }

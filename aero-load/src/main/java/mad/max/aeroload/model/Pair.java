@@ -5,10 +5,7 @@ import lombok.Getter;
 
 @AllArgsConstructor
 @Getter
-public final class Product<A, B> {
+public final class Pair<A, B> {
     private A a;
     private B b;
-    private Runnable successHandler;
-    private Runnable failureHandler;
-
 }
