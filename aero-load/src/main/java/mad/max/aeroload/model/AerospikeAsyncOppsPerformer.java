@@ -28,14 +28,14 @@ import java.util.concurrent.atomic.AtomicLong;
 public class AerospikeAsyncOppsPerformer extends AsyncConsumingTask<Pair<Key, Operation[]>> {
     private final AerospikeClient client;
     private final Throttles throttles;
-    private final AerospikeLoadingMetrics metrics;
+    private final Counts counts;
     private final int maxThroughput;
 
     public AerospikeAsyncOppsPerformer(AerospikeClient client, Throttles throttles, int maxThroughput, int maxCommands) {
         super(maxCommands);
         this.client = client;
         this.throttles = throttles;
-        this.metrics = new AerospikeLoadingMetrics(System.currentTimeMillis());
+        this.counts = new Counts(System.currentTimeMillis());
         this.maxThroughput = maxThroughput;
     }
 
@@ -44,13 +44,13 @@ public class AerospikeAsyncOppsPerformer extends AsyncConsumingTask<Pair<Key, Op
         EventLoops eventLoops = client.getCluster().eventLoops;
 
 
-        if (metrics.haltSignal.get()) {//checking if we have an indication that the server is having problems
-            metrics.writeQueuedCount.incrementAndGet();
+        if (counts.haltSignal.get()) {//checking if we have an indication that the server is having problems
+            counts.writeQueuedCount.incrementAndGet();
             do {
                 log.info("The slowdown flag is on, waiting for it to be cleared");
                 ThreadSleepUtils.sleepMaxTime();
-            } while (metrics.haltSignal.get());
-            metrics.writeQueuedCount.decrementAndGet();
+            } while (counts.haltSignal.get());
+            counts.writeQueuedCount.decrementAndGet();
         }
 
         //Checking if we are exceeding configured throughput
@@ -59,12 +59,12 @@ public class AerospikeAsyncOppsPerformer extends AsyncConsumingTask<Pair<Key, Op
         // or a minimum amount
         if (maxThroughput > 0 && exceedingThroughput()) {
             log.info("Configured throughput of {} was exceeded", maxThroughput);
-            metrics.writeQueuedCount.incrementAndGet();
+            counts.writeQueuedCount.incrementAndGet();
             do {
-                long sleepingTime = metrics.getTaskAvgElapsedTime();
+                long sleepingTime = counts.getTaskAvgElapsedTime();
                 ThreadSleepUtils.sleepWithNonZeroMin(sleepingTime);
             } while (exceedingThroughput());
-            metrics.writeQueuedCount.decrementAndGet();
+            counts.writeQueuedCount.decrementAndGet();
         }
 
         boolean queue = true;
@@ -81,14 +81,14 @@ public class AerospikeAsyncOppsPerformer extends AsyncConsumingTask<Pair<Key, Op
         }
 
         if (queue) { //we didn't find a free event loop, wait for the one randomly selected first
-            metrics.writeQueuedCount.incrementAndGet();
-            log.debug("None of the {} loops are available. Waiting on:{}. Pending:{}", size, eventLoopIndex, metrics.getPending());
+            counts.writeQueuedCount.incrementAndGet();
+            log.debug("None of the {} loops are available. Waiting on:{}. Pending:{}", size, eventLoopIndex, counts.getPending());
         }
 
         if (throttles.waitForSlot(eventLoopIndex, 1)) { // if the loop has no space we will wait until is free. if not is assigned
             if (queue) //meaning the previous if was executed, so we have to decrease the queued metric
-                metrics.writeQueuedCount.decrementAndGet();
-            metrics.writeProcessingCount.incrementAndGet();
+                counts.writeQueuedCount.decrementAndGet();
+            counts.writeProcessingCount.incrementAndGet();
 
 
             //Aerospike async operate command
@@ -98,11 +98,11 @@ public class AerospikeAsyncOppsPerformer extends AsyncConsumingTask<Pair<Key, Op
     }
 
     private boolean exceedingThroughput() {
-        return this.metrics.getCurrentThroughput() > maxThroughput;
+        return this.counts.getCurrentThroughput() > maxThroughput;
     }
 
     public String stats() {
-        return metrics.getStats();
+        return counts.getStats();
     }
 
     private class AerospikeOperateListener implements RecordListener {
@@ -125,9 +125,9 @@ public class AerospikeAsyncOppsPerformer extends AsyncConsumingTask<Pair<Key, Op
             throttles.addSlot(eventLoopIndex, 1);
             long endTime = System.currentTimeMillis();
             long time = endTime - startTime;
-            metrics.writeProcessingCount.decrementAndGet();
-            metrics.writeCompletedCount.incrementAndGet();
-            metrics.registerTime(time);
+            counts.writeProcessingCount.decrementAndGet();
+            counts.writeCompletedCount.incrementAndGet();
+            counts.registerTime(time);
             Optional.ofNullable(observer).ifPresent(h -> CompletableFuture.runAsync(h::onSuccess));
         }
 
@@ -136,38 +136,41 @@ public class AerospikeAsyncOppsPerformer extends AsyncConsumingTask<Pair<Key, Op
         public void onFailure(AerospikeException e) {
             throttles.addSlot(eventLoopIndex, 1);
             log.warn("Operate failed: namespace={} set={} key={}", key.namespace, key.setName, key.userKey, e);
-            metrics.writeProcessingCount.decrementAndGet();
-            metrics.writeErrors.incrementAndGet();
+            counts.writeProcessingCount.decrementAndGet();
+            counts.writeErrors.incrementAndGet();
             boolean haltSignal = false;
             switch (e.getResultCode()) {
-                case 5:
-                    metrics.writeKeyExists.incrementAndGet();
-                case 9: {
-                    metrics.writeTimeouts.incrementAndGet();
+                case 5 -> {
+                    counts.writeKeyExists.incrementAndGet();
+                }
+                case 9 -> {
+                    counts.writeTimeouts.incrementAndGet();
                     haltSignal = true;
                 }
-                case 13: //AS_ERR_RECORD_TOO_BIG:
-                    metrics.writeRecordTooBig.incrementAndGet();
-                case 14: {//AS_ERR_KEY_BUSY
-                    metrics.writeHotKey.incrementAndGet();
+                case 13 -> { //AS_ERR_RECORD_TOO_BIG:
+                    counts.writeRecordTooBig.incrementAndGet();
+                }
+                case 14 -> {//AS_ERR_KEY_BUSY
+                    counts.writeHotKey.incrementAndGet();
                     haltSignal = true;
                 }
-                case 18: {
-                    metrics.writeDeviceOverload.incrementAndGet();
+                case 18 -> {
+                    counts.writeDeviceOverload.incrementAndGet();
+                    haltSignal = true;
+                }
+                default -> {
                     haltSignal = true;
                 }
             }
 
-            if (haltSignal && !metrics.haltSignal.get()) {
-                //TODO identify which errors should change the slowDownFlag and what's the mechanism that will clean that flag
-                //should consider that other threads might rise the flag too.
-                //AerospikeException.AsyncQueueFull exception is thrown.
+            if (haltSignal && !counts.haltSignal.get()) {
+                //change the slowDownFlag and what's the mechanism that will clean that flag
                 // Your application should respond by delaying commands in a non-event loop thread until eventLoop.getQueueSize() is sufficiently low.
-                metrics.haltSignal.set(true);
+                counts.haltSignal.set(true);
                 log.warn("Error received signify load on aerospike server. Will wait for {} {}", 1, TimeUnit.SECONDS, e);
                 CompletableFuture.delayedExecutor(1, TimeUnit.SECONDS).execute(() -> {
                             log.info("Restarting operations after {} {}", 1, TimeUnit.SECONDS);
-                            metrics.haltSignal.set(false);
+                            counts.haltSignal.set(false);
                         }
                 );
 
@@ -178,7 +181,7 @@ public class AerospikeAsyncOppsPerformer extends AsyncConsumingTask<Pair<Key, Op
     }
 
     @RequiredArgsConstructor
-    private static class AerospikeLoadingMetrics {
+    private static class Counts {
         private static final java.text.SimpleDateFormat DATE_FORMAT = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
         private final AtomicInteger writeQueuedCount = new AtomicInteger();
         private final AtomicInteger writeProcessingCount = new AtomicInteger();
