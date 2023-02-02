@@ -18,7 +18,7 @@ import java.util.stream.Stream;
 public class LocalDirInputStreamProducer extends AsyncProducer<Triad<String, String, InputStream>> implements Runnable{
 
     private final String localDir;
-    public LocalDirInputStreamProducer(AsyncConsumer<Triad<String, String, InputStream>> consumer, String localDir) {
+    public LocalDirInputStreamProducer(String localDir, AsyncConsumer<Triad<String, String, InputStream>> consumer) {
         super(consumer);
         this.localDir = localDir;
     }

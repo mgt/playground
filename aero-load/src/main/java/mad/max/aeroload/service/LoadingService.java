@@ -49,14 +49,24 @@ public class LoadingService {
     public void load(LoadingProfile loadingProfile) {
 
         try (AerospikeClient client = aerospikeClient(loadingProfile)) {
+            // ↓  ↓  ↓ The code is better understood reading it bottom up.
+            //========================================================================================================
+            //This is the synk, all things that got here through the chain will end up in aerospike
             AerospikeAsyncOperateCaller aerospikeLoader = new AerospikeAsyncOperateCaller(client, loadingProfile);
+            //This takes the product from the previous chain and creates one key/operation(1+) and pushes ↑ to the next chain
             LinesToAerospikeObjectsAdapter linesToAerospikeObjectsAdapter = new LinesToAerospikeObjectsAdapter(aerospikeLoader);
-            InputStreamToLinesAdapter s3InputStreamToLinesAdapter = new InputStreamToLinesAdapter(linesToAerospikeObjectsAdapter);
-            InputStreamParameterAdder inputStreamParameterAdder = new InputStreamParameterAdder(linesReaderConfigs, s3InputStreamToLinesAdapter);
+            //This takes the product from the previous chain and creates one element per line in the file then pushes ↑ to the next in the chain
+            InputStreamToLinesAdapter inputStreamToLinesAdapter = new InputStreamToLinesAdapter(linesToAerospikeObjectsAdapter);
+            //This takes the product from the previous chain and adds metadata to it then pushes ↑ to the next in the chain
+            InputStreamParameterAdder inputStreamParameterAdder = new InputStreamParameterAdder(linesReaderConfigs, inputStreamToLinesAdapter);
+            //First create a producer, to push elements to the next in the chain ↑
+            //These producers are Runnable just for convenience
             var producer = switch (strategy) {
                 case "S3" -> new S3BucketInputStreamProducer(s3Client(accessKey, secretKey), bucketName, inputStreamParameterAdder);
-                case "local" -> new LocalDirInputStreamProducer(inputStreamParameterAdder, bucketName);
+                case "local" -> new LocalDirInputStreamProducer(bucketName, inputStreamParameterAdder);
             };
+            //↑  ↑  ↑  From this point  ↑  ↑  ↑
+            //========================================================================================================
             aerospikeLoader.spinOff();//The aerospikeLoader goes off in another thread...
             producer.run();
             aerospikeLoader.waitToFinish();
