@@ -15,16 +15,17 @@ import java.io.IOException;
 import java.io.InputStream;
 
 @Slf4j
-public class S3BucketInputStreamProducer extends AsyncProducer<Triad<String, String, InputStream>> {
+public class S3BucketInputStreamProducer extends AsyncProducer<Triad<String, String, InputStream>> implements Runnable{
 
     private final AmazonS3 s3client;
-
-    public S3BucketInputStreamProducer(AmazonS3 s3Client, AsyncConsumer<Triad<String, String, InputStream>> consumer) {
+    private final String bucketName;
+    public S3BucketInputStreamProducer(AmazonS3 s3Client, String bucketName, AsyncConsumer<Triad<String, String, InputStream>> consumer) {
         super(consumer);
         this.s3client=s3Client;
+        this.bucketName = bucketName;
     }
 
-    public void run(String bucketName) {
+    public void run() {
         ObjectListing objectListing = s3client.listObjects(bucketName);
         for (S3ObjectSummary os : objectListing.getObjectSummaries()) {
             S3Object s3object = s3client.getObject(bucketName, os.getKey());

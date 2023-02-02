@@ -15,11 +15,12 @@ import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.AmazonS3ClientBuilder;
 import lombok.extern.slf4j.Slf4j;
 import mad.max.aeroload.model.consumer.AerospikeAsyncOperateCaller;
-import mad.max.aeroload.model.producer.FileLinesReaderConfigs;
+import mad.max.aeroload.model.producer.LinesReaderConfigs;
+import mad.max.aeroload.model.producer.LocalDirInputStreamProducer;
 import mad.max.aeroload.model.producer.S3BucketInputStreamProducer;
-import mad.max.aeroload.model.transformer.FileLinesToAerospikeObjectsAdapter;
-import mad.max.aeroload.model.transformer.InputStreamToFileLinesAdapter;
-import mad.max.aeroload.model.transformer.S3InputStreamParameterAdder;
+import mad.max.aeroload.model.transformer.InputStreamParameterAdder;
+import mad.max.aeroload.model.transformer.InputStreamToLinesAdapter;
+import mad.max.aeroload.model.transformer.LinesToAerospikeObjectsAdapter;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -42,19 +43,22 @@ public class LoadingService {
     @Value("${AWS.bucketName}")
     private String bucketName;
     @Value("${job.suggested.profile:DEFAULT}")
-    private FileLinesReaderConfigs fileLinesReaderConfigs;
+    private LinesReaderConfigs linesReaderConfigs;
+    private String strategy;
+
     public void load(LoadingProfile loadingProfile) {
 
-
         try (AerospikeClient client = aerospikeClient(loadingProfile)) {
-            AerospikeAsyncOperateCaller aerospikeLoader = new AerospikeAsyncOperateCaller(client,loadingProfile);
-            FileLinesToAerospikeObjectsAdapter fileLinesToAerospikeObjectsAdapter = new FileLinesToAerospikeObjectsAdapter(aerospikeLoader);
-            InputStreamToFileLinesAdapter s3InputStreamToFileLinesAdapter = new InputStreamToFileLinesAdapter(fileLinesToAerospikeObjectsAdapter);
-            S3InputStreamParameterAdder s3InputStreamParameterAdder = new S3InputStreamParameterAdder(fileLinesReaderConfigs, s3InputStreamToFileLinesAdapter);
-            S3BucketInputStreamProducer s3BucketInputStreamProducer = new S3BucketInputStreamProducer(s3Client(accessKey, secretKey), s3InputStreamParameterAdder);
-
+            AerospikeAsyncOperateCaller aerospikeLoader = new AerospikeAsyncOperateCaller(client, loadingProfile);
+            LinesToAerospikeObjectsAdapter linesToAerospikeObjectsAdapter = new LinesToAerospikeObjectsAdapter(aerospikeLoader);
+            InputStreamToLinesAdapter s3InputStreamToLinesAdapter = new InputStreamToLinesAdapter(linesToAerospikeObjectsAdapter);
+            InputStreamParameterAdder inputStreamParameterAdder = new InputStreamParameterAdder(linesReaderConfigs, s3InputStreamToLinesAdapter);
+            var producer = switch (strategy) {
+                case "S3" -> new S3BucketInputStreamProducer(s3Client(accessKey, secretKey), bucketName, inputStreamParameterAdder);
+                case "local" -> new LocalDirInputStreamProducer(inputStreamParameterAdder, bucketName);
+            };
             aerospikeLoader.spinOff();//The aerospikeLoader goes off in another thread...
-            s3BucketInputStreamProducer.run(bucketName);
+            producer.run();
             aerospikeLoader.waitToFinish();
             System.out.println(aerospikeLoader.stats());
         }

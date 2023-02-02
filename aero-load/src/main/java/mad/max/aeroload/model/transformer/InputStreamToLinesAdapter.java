@@ -5,10 +5,8 @@ import lombok.extern.slf4j.Slf4j;
 import mad.max.aeroload.model.base.Triad;
 import mad.max.aeroload.model.consumer.base.AsyncConsumer;
 import mad.max.aeroload.model.consumer.base.AsyncConsumingTask;
-import mad.max.aeroload.model.producer.FileLinesAsyncObserver;
-import mad.max.aeroload.model.producer.FileLinesReaderConfigs;
+import mad.max.aeroload.model.producer.LinesReaderConfigs;
 import mad.max.aeroload.model.producer.base.AsyncProducer;
-import mad.max.aeroload.model.transformer.base.InputStreamMeta;
 import mad.max.aeroload.utils.ThreadSleepUtils;
 import org.springframework.util.Assert;
 import org.springframework.util.StringUtils;
@@ -20,19 +18,19 @@ import java.nio.charset.StandardCharsets;
 import java.util.concurrent.atomic.AtomicLong;
 
 @Slf4j
-public class S3InputStreamToFileLinesAdapter extends AsyncProducer<Triad<String, String[],String>>  implements AsyncConsumer<Triad<InputStreamMeta, FileLinesReaderConfigs, InputStream>> {
+public class InputStreamToLinesAdapter extends AsyncProducer<Triad<String, String[], String>> implements AsyncConsumer<Triad<InputStreamMeta, LinesReaderConfigs, InputStream>> {
 
     //No multiple extension in java, so implement + Delegate
     @Delegate
-    private final AsyncConsumingTask<Triad<InputStreamMeta, FileLinesReaderConfigs, InputStream>> consumerImpl;
+    private final AsyncConsumingTask<Triad<InputStreamMeta, LinesReaderConfigs, InputStream>> consumerImpl;
 
-    public S3InputStreamToFileLinesAdapter(AsyncConsumer<Triad<String, String[],String>> producersConsumer ) {
+    public InputStreamToLinesAdapter(AsyncConsumer<Triad<String, String[], String>> producersConsumer) {
         super(producersConsumer);
         this.consumerImpl = new S3InputConsumerDelegator();
     }
 
 
-    class S3InputConsumerDelegator  extends AsyncConsumingTask<Triad<InputStreamMeta, FileLinesReaderConfigs, InputStream>> {
+    class S3InputConsumerDelegator extends AsyncConsumingTask<Triad<InputStreamMeta, LinesReaderConfigs, InputStream>> {
 
 
         public S3InputConsumerDelegator() {
@@ -40,20 +38,21 @@ public class S3InputStreamToFileLinesAdapter extends AsyncProducer<Triad<String,
         }
 
         @Override
-        protected void offer(AsyncDecorator<Triad<InputStreamMeta, FileLinesReaderConfigs, InputStream>> product) throws InterruptedException {
-            FileLinesReaderConfigs.ReadingConfig config = product.object().b().getReadingConfig();
+        protected void offer(AsyncDecorator<Triad<InputStreamMeta, LinesReaderConfigs, InputStream>> decorator) {
+            Triad<InputStreamMeta, LinesReaderConfigs, InputStream> triad = decorator.object();
+            LinesReaderConfigs.ReadingConfig config = triad.b().getReadingConfig();
+            InputStreamMeta parameters = triad.a();
+            String fileName = parameters.fileName();
             long lastReadLineNumber = -1;
             AtomicLong totalTime = new AtomicLong(0); //Keeps track of the total time spent in the process
             AtomicLong errorCount = new AtomicLong(0); //Amount of errors occurred here or down the chain
             AtomicLong okCount = new AtomicLong(0); //Amount of records successfully processed
             long startTime = System.currentTimeMillis();
-            InputStreamMeta parameters = product.object().a();
-            String fileName = parameters.fileName();
             boolean fail = false;//in case there is an exception, will be used not to busy-wait
 
             //Maybe we need to clean previous failure reports here
 
-            try (LineNumberReader br = new LineNumberReader(new InputStreamReader(product.object().c(), StandardCharsets.UTF_8))) {
+            try (LineNumberReader br = new LineNumberReader(new InputStreamReader(triad.c(), StandardCharsets.UTF_8))) {
 
                 log.debug("Reading file: {} ", fileName);
 
@@ -70,7 +69,7 @@ public class S3InputStreamToFileLinesAdapter extends AsyncProducer<Triad<String,
                     log.trace("Read line {} from file:{} ", br.getLineNumber(), fileName);
                     String[] fileColumns = line.split(config.delimiter());
 
-                    Assert.isTrue((double) errorCount.get() *100 / br.getLineNumber() <= parameters.errorThreshold(), ()->"Error threshold is higher than configured");
+                    Assert.isTrue((double) errorCount.get() * 100 / br.getLineNumber() <= parameters.errorThreshold(), () -> "Error threshold is higher than configured");
                     //Validate the line we read, we should be able to get at least the segment list
                     if (!StringUtils.hasText(line) || fileColumns.length < config.segmentColumnIndexInFile()) {
                         errorCount.incrementAndGet();
@@ -82,17 +81,23 @@ public class S3InputStreamToFileLinesAdapter extends AsyncProducer<Triad<String,
                     String[] listString = fileColumns[config.segmentColumnIndexInFile()]
                             .split(config.segmentDelimiter());
 
-                    //Configuring observers, they are going to be called async
-                    FileLinesAsyncObserver observe = new FileLinesAsyncObserver(okCount, errorCount, totalTime, fileName, keyString,
+                    //Configuring observers for downStream, they are going to be called async
+                    InputStreamToLinesObserver observe = new InputStreamToLinesObserver(okCount, errorCount, totalTime, fileName, keyString,
                             fileColumns[config.segmentColumnIndexInFile()], System.currentTimeMillis(), br.getLineNumber());
-                    S3InputStreamToFileLinesAdapter.this.push(new Triad<>(keyString, listString, parameters.binName()), observe);
+                    InputStreamToLinesAdapter.this.push(new Triad<>(keyString, listString, parameters.binName()), observe);
                     lastReadLineNumber = br.getLineNumber();
                 }
+                //Because I am an AsyncConsumer, my producer gave me an observer, so my duty is calling it to notify of success processing
+                if (okCount.get() + errorCount.get() == lastReadLineNumber)
+                    decorator.observer().onSuccess();
             } catch (Exception e) {//Unrecoverable scenario, we don't know the nature of the error
                 //given it's the last statement in the cycle probably we did not get to update
                 // lastReadLineNumber and the error occurred in the next line
                 log.error("Error processing file {}: Line:{} ", fileName, lastReadLineNumber + 1, e);
                 fail = true;
+
+                //Because I am an AsyncConsumer, my producer gave me an observer, so my duty is calling it to notify of error in processing
+                decorator.observer().onFail("totalTime\terrorCount\tokCount\tlastReadLineNumber%n%d%d%d%s".formatted(totalTime.get(), errorCount.get(), okCount.get(), lastReadLineNumber + 1));
             } finally {
                 //In case there are elements being processed we wait
                 while (okCount.get() + errorCount.get() < lastReadLineNumber && !fail) {
@@ -100,7 +105,13 @@ public class S3InputStreamToFileLinesAdapter extends AsyncProducer<Triad<String,
                         ThreadSleepUtils.sleepMaxTime();
                     } catch (InterruptedException e) {
                         //should we interrupt up the chain too?
-                        fail = true;
+                        if (okCount.get() + errorCount.get() < lastReadLineNumber) { //if after all loops this is still true then we fail to process the total amount
+                            fail = true;
+                            // we know we have to notify failure
+                            decorator.observer().onFail("totalTime\terrorCount\tokCount\tlastReadLineNumber%n%d%d%d%s".formatted(totalTime.get(), errorCount.get(), okCount.get(), lastReadLineNumber + 1));
+                        } else {
+                            decorator.observer().onSuccess(); // interrupted but managed to get all things done, so notify success
+                        }
                     }
                 }
                 log.info("Process finished. Lines:{} errors:{} total-time:{} avg-time/opp:{}",
@@ -108,6 +119,8 @@ public class S3InputStreamToFileLinesAdapter extends AsyncProducer<Triad<String,
                         System.currentTimeMillis() - startTime, (double) totalTime.get() / lastReadLineNumber);
             }
         }
-    };
+    }
+
+    ;
 }
 

@@ -10,4 +10,5 @@ public abstract class AsyncProducer<T> {
     protected void push(T product, AsyncConsumer.Observer observer){
         consumer.accept(product, observer);
     }
+
 }

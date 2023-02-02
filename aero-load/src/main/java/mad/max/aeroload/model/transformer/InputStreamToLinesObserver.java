@@ -1,4 +1,4 @@
-package mad.max.aeroload.model.producer;
+package mad.max.aeroload.model.transformer;
 
 import lombok.extern.slf4j.Slf4j;
 import mad.max.aeroload.model.consumer.base.AsyncConsumer;
@@ -9,9 +9,9 @@ import java.io.Writer;
 import java.util.concurrent.atomic.AtomicLong;
 
 @Slf4j
-public record FileLinesAsyncObserver(AtomicLong okCount, AtomicLong errorCount, AtomicLong totalTime, String file,
-                              String keyString, String fileColumn, long tick,
-                              long lineNumber) implements AsyncConsumer.Observer {
+public record InputStreamToLinesObserver(AtomicLong okCount, AtomicLong errorCount, AtomicLong totalTime, String file,
+                                         String keyString, String fileColumn, long tick,
+                                         long lineNumber) implements AsyncConsumer.Observer {
     public void onFail(String error) {
         long timeSpentOnOperate = System.currentTimeMillis() - tick;
         totalTime.addAndGet(timeSpentOnOperate);

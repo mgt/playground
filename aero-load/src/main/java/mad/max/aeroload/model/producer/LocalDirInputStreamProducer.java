@@ -15,14 +15,16 @@ import java.nio.file.Path;
 import java.util.stream.Stream;
 
 @Slf4j
-public class LocalDirInputStreamProducer extends AsyncProducer<Triad<String, String, InputStream>> {
+public class LocalDirInputStreamProducer extends AsyncProducer<Triad<String, String, InputStream>> implements Runnable{
 
-    public LocalDirInputStreamProducer(AsyncConsumer<Triad<String, String, InputStream>> consumer) {
+    private final String localDir;
+    public LocalDirInputStreamProducer(AsyncConsumer<Triad<String, String, InputStream>> consumer, String localDir) {
         super(consumer);
+        this.localDir = localDir;
     }
 
     @SneakyThrows
-    public void run(String localDir){
+    public void run(){
         try (Stream<Path> walk = Files.walk(Path.of(localDir))) {
             walk.filter(Files::isRegularFile)
                     .map(this::getTriad)
