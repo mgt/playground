@@ -5,25 +5,28 @@ import com.aerospike.client.Host;
 import com.aerospike.client.async.EventLoops;
 import com.aerospike.client.async.EventPolicy;
 import com.aerospike.client.async.NioEventLoops;
-import com.aerospike.client.async.Throttles;
 import com.aerospike.client.policy.ClientPolicy;
 import com.aerospike.client.policy.RecordExistsAction;
 import com.aerospike.client.policy.WritePolicy;
+import com.amazonaws.auth.AWSStaticCredentialsProvider;
+import com.amazonaws.auth.BasicAWSCredentials;
+import com.amazonaws.regions.Regions;
+import com.amazonaws.services.s3.AmazonS3;
+import com.amazonaws.services.s3.AmazonS3ClientBuilder;
 import lombok.extern.slf4j.Slf4j;
-import mad.max.aeroload.model.consumer.AerospikeAsyncOppsPerformer;
-import mad.max.aeroload.model.producer.FileLinesAsyncParameters;
-import mad.max.aeroload.model.producer.FileLinesAsyncProducer;
+import mad.max.aeroload.model.consumer.AerospikeAsyncOperateCaller;
 import mad.max.aeroload.model.producer.FileLinesReaderConfigs;
-import mad.max.aeroload.model.transformer.FileLinesToAerospikeAdapter;
+import mad.max.aeroload.model.producer.S3BucketInputStreamProducer;
+import mad.max.aeroload.model.transformer.FileLinesToAerospikeObjectsAdapter;
+import mad.max.aeroload.model.transformer.InputStreamToFileLinesAdapter;
+import mad.max.aeroload.model.transformer.S3InputStreamParameterAdder;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
-
-import java.io.File;
 
 @Slf4j
 @Component
 public class LoadingService {
-    public static final String SEGMENT_BIN_NAME = "list";
+
     @Value("${aerospike.host:localhost}")
     private String host;
     @Value("${aerospike.port:3000}")
@@ -32,26 +35,28 @@ public class LoadingService {
     private int timeout;
     @Value("${aerospike.ttl-days:1}")
     private Integer ttl;
-    @Value("${file.path}")
-    private String filePath;
-
-
+    @Value("${AWS.accesskey}")
+    private String accessKey;
+    @Value("${AWS.secretkey}")
+    private String secretKey;
+    @Value("${AWS.bucketName}")
+    private String bucketName;
+    @Value("${job.suggested.profile:DEFAULT}")
+    private FileLinesReaderConfigs fileLinesReaderConfigs;
     public void load(LoadingProfile loadingProfile) {
-        Throttles throttles = new Throttles(Runtime.getRuntime().availableProcessors(), loadingProfile.getMaxParallelCommands());
 
 
         try (AerospikeClient client = aerospikeClient(loadingProfile)) {
-            AerospikeAsyncOppsPerformer loader = new AerospikeAsyncOppsPerformer(client, throttles, loadingProfile.getMaxThroughput(), loadingProfile.getMaxQueuedElements());
-            loader.spinOff();
-            FileLinesToAerospikeAdapter fileLinesToAerospikeAdapter = new FileLinesToAerospikeAdapter(loader);
-            FileLinesAsyncProducer fileLinesProducer = new FileLinesAsyncProducer(fileLinesToAerospikeAdapter);
+            AerospikeAsyncOperateCaller aerospikeLoader = new AerospikeAsyncOperateCaller(client,loadingProfile);
+            FileLinesToAerospikeObjectsAdapter fileLinesToAerospikeObjectsAdapter = new FileLinesToAerospikeObjectsAdapter(aerospikeLoader);
+            InputStreamToFileLinesAdapter s3InputStreamToFileLinesAdapter = new InputStreamToFileLinesAdapter(fileLinesToAerospikeObjectsAdapter);
+            S3InputStreamParameterAdder s3InputStreamParameterAdder = new S3InputStreamParameterAdder(fileLinesReaderConfigs, s3InputStreamToFileLinesAdapter);
+            S3BucketInputStreamProducer s3BucketInputStreamProducer = new S3BucketInputStreamProducer(s3Client(accessKey, secretKey), s3InputStreamParameterAdder);
 
-            FileLinesAsyncParameters parameters =
-                    new FileLinesAsyncParameters(new File(filePath), 0, loadingProfile.getMaxLinesPerFile(), loadingProfile.getMaxErrorThreshold(), SEGMENT_BIN_NAME);
-            fileLinesProducer.run(parameters, FileLinesReaderConfigs.DEFAULT);
-            loader.waitToFinish();
-
-            System.out.println(loader.stats());
+            aerospikeLoader.spinOff();//The aerospikeLoader goes off in another thread...
+            s3BucketInputStreamProducer.run(bucketName);
+            aerospikeLoader.waitToFinish();
+            System.out.println(aerospikeLoader.stats());
         }
     }
 
@@ -85,5 +90,13 @@ public class LoadingService {
         Host[] hosts = Host.parseHosts(host, port);
 
         return new AerospikeClient(policy, hosts);
+    }
+
+    public static AmazonS3 s3Client(String accessKey, String secretKey) {
+        return AmazonS3ClientBuilder
+                .standard()
+                .withCredentials(new AWSStaticCredentialsProvider(new BasicAWSCredentials(accessKey, secretKey)))
+                .withRegion(Regions.US_EAST_2)
+                .build();
     }
 }

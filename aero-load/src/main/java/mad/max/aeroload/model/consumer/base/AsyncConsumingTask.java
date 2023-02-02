@@ -34,12 +34,6 @@ public abstract class AsyncConsumingTask<T> extends SpinOffTask implements Async
     }
 
     @SneakyThrows
-    public void accept(T product) {
-        log.trace("adding element to the queue");
-        queue.put(new AsyncDecorator<>(product, null));
-    }
-
-    @SneakyThrows
     public void accept(T product, Observer observer) {
         log.trace("adding element to the queue");
         queue.put(new AsyncDecorator<>(product, observer));

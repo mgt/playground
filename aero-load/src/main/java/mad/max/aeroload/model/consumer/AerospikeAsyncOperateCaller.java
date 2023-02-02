@@ -13,6 +13,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import mad.max.aeroload.model.consumer.base.AsyncConsumingTask;
 import mad.max.aeroload.model.base.Pair;
+import mad.max.aeroload.service.LoadingProfile;
 import mad.max.aeroload.utils.ThreadSleepUtils;
 
 import java.text.SimpleDateFormat;
@@ -27,18 +28,19 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
 @Slf4j
-public class AerospikeAsyncOppsPerformer extends AsyncConsumingTask<Pair<Key, Operation[]>> {
+public class AerospikeAsyncOperateCaller extends AsyncConsumingTask<Pair<Key, Operation[]>> {
     private final AerospikeClient client;
     private final Throttles throttles;
     private final Counts counts;
     private final int maxThroughput;
 
-    public AerospikeAsyncOppsPerformer(AerospikeClient client, Throttles throttles, int maxThroughput, int maxCommands) {
-        super(maxCommands);
+
+    public AerospikeAsyncOperateCaller(AerospikeClient client, LoadingProfile loadingProfile) {
+        super(loadingProfile.getMaxQueuedElements());
         this.client = client;
-        this.throttles = throttles;
         this.counts = new Counts(System.currentTimeMillis());
-        this.maxThroughput = maxThroughput;
+        this.maxThroughput = loadingProfile.getMaxThroughput();
+        this.throttles = new Throttles(Runtime.getRuntime().availableProcessors(), loadingProfile.getMaxParallelCommands());
     }
 
     protected void offer(AsyncDecorator<Pair<Key, Operation[]>> product) throws InterruptedException {

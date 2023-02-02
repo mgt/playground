@@ -15,12 +15,12 @@ import mad.max.aeroload.model.base.Triad;
 import java.util.Arrays;
 
 @Slf4j
-public class FileLinesToAerospikeAdapter extends AsyncProducer<Pair<Key, Operation[]>> implements AsyncConsumer<Triad<String, String[],String>> {
+public class FileLinesToAerospikeObjectsAdapter extends AsyncProducer<Pair<Key, Operation[]>> implements AsyncConsumer<Triad<String, String[],String>> {
     public static final ListPolicy POLICY = new ListPolicy(ListOrder.UNORDERED, ListWriteFlags.ADD_UNIQUE | ListWriteFlags.NO_FAIL);
     public static final String SET_NAME = "audience_targeting_segments";
     public static final String NAMESPACE = "tempcache";
 
-    public FileLinesToAerospikeAdapter(AsyncConsumer<Pair<Key, Operation[]>> consumer) {
+    public FileLinesToAerospikeObjectsAdapter(AsyncConsumer<Pair<Key, Operation[]>> consumer) {
         super(consumer);
     }
 
@@ -40,8 +40,4 @@ public class FileLinesToAerospikeAdapter extends AsyncProducer<Pair<Key, Operati
         this.push(new Pair<>(getKey(triad.a()), getOperations(triad.c(), triad.b())), observer);
     }
 
-    @Override
-    public void accept(Triad<String, String[],String> triad) {
-        this.accept(triad, null);
-    }
 }

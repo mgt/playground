@@ -27,11 +27,11 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
-import static mad.max.aeroload.model.transformer.FileLinesToAerospikeAdapter.NAMESPACE;
-import static mad.max.aeroload.model.transformer.FileLinesToAerospikeAdapter.POLICY;
-import static mad.max.aeroload.model.transformer.FileLinesToAerospikeAdapter.SET_NAME;
-import static mad.max.aeroload.model.transformer.FileLinesToAerospikeAdapter.getKey;
-import static mad.max.aeroload.service.LoadingService.SEGMENT_BIN_NAME;
+import static mad.max.aeroload.model.transformer.FileLinesToAerospikeObjectsAdapter.NAMESPACE;
+import static mad.max.aeroload.model.transformer.FileLinesToAerospikeObjectsAdapter.POLICY;
+import static mad.max.aeroload.model.transformer.FileLinesToAerospikeObjectsAdapter.SET_NAME;
+import static mad.max.aeroload.model.transformer.FileLinesToAerospikeObjectsAdapter.getKey;
+import static mad.max.aeroload.model.transformer.S3InputStreamParameterAdder.SEGMENT_BIN_NAME;
 
 @Slf4j
 @ShellComponent

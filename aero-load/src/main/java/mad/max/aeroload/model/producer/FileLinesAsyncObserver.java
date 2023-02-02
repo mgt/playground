@@ -9,7 +9,7 @@ import java.io.Writer;
 import java.util.concurrent.atomic.AtomicLong;
 
 @Slf4j
-record FileLinesAsyncObserver(AtomicLong okCount, AtomicLong errorCount, AtomicLong totalTime, String file,
+public record FileLinesAsyncObserver(AtomicLong okCount, AtomicLong errorCount, AtomicLong totalTime, String file,
                               String keyString, String fileColumn, long tick,
                               long lineNumber) implements AsyncConsumer.Observer {
     public void onFail(String error) {
