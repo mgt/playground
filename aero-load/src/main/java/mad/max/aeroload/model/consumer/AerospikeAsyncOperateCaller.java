@@ -11,8 +11,8 @@ import com.aerospike.client.async.Throttles;
 import com.aerospike.client.listener.RecordListener;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import mad.max.aeroload.model.consumer.base.AsyncConsumingTask;
 import mad.max.aeroload.model.base.Pair;
+import mad.max.aeroload.model.consumer.base.AsyncConsumingTask;
 import mad.max.aeroload.service.LoadingProfile;
 import mad.max.aeroload.utils.ThreadSleepUtils;
 
@@ -144,16 +144,14 @@ public class AerospikeAsyncOperateCaller extends AsyncConsumingTask<Pair<Key, Op
             counts.writeErrors.incrementAndGet();
             boolean haltSignal = false;
             switch (e.getResultCode()) {
-                case 5 -> {
-                    counts.writeKeyExists.incrementAndGet();
-                }
+                case 5 -> counts.writeKeyExists.incrementAndGet();
                 case 9 -> {
                     counts.writeTimeouts.incrementAndGet();
                     haltSignal = true;
                 }
-                case 13 -> { //AS_ERR_RECORD_TOO_BIG:
-                    counts.writeRecordTooBig.incrementAndGet();
-                }
+                case 13 ->  //AS_ERR_RECORD_TOO_BIG:
+                        counts.writeRecordTooBig.incrementAndGet();
+
                 case 14 -> {//AS_ERR_KEY_BUSY
                     counts.writeHotKey.incrementAndGet();
                     haltSignal = true;
@@ -162,9 +160,8 @@ public class AerospikeAsyncOperateCaller extends AsyncConsumingTask<Pair<Key, Op
                     counts.writeDeviceOverload.incrementAndGet();
                     haltSignal = true;
                 }
-                default -> {
-                    haltSignal = true;
-                }
+                default -> haltSignal = true;
+
             }
 
             if (haltSignal && !counts.haltSignal.get()) {

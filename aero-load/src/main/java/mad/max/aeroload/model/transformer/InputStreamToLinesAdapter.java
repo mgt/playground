@@ -2,12 +2,15 @@ package mad.max.aeroload.model.transformer;
 
 import lombok.experimental.Delegate;
 import lombok.extern.slf4j.Slf4j;
+import mad.max.aeroload.model.base.N4ple;
 import mad.max.aeroload.model.base.Triad;
 import mad.max.aeroload.model.consumer.base.AsyncConsumer;
 import mad.max.aeroload.model.consumer.base.AsyncConsumingTask;
-import mad.max.aeroload.model.producer.LinesReaderConfigs;
+import mad.max.aeroload.model.producer.base.InputStreamMeta;
+import mad.max.aeroload.model.producer.base.LinesReaderConfigs;
 import mad.max.aeroload.model.producer.base.AsyncProducer;
 import mad.max.aeroload.utils.ThreadSleepUtils;
+import org.apache.commons.io.input.CountingInputStream;
 import org.springframework.util.Assert;
 import org.springframework.util.StringUtils;
 
@@ -18,31 +21,32 @@ import java.nio.charset.StandardCharsets;
 import java.util.concurrent.atomic.AtomicLong;
 
 @Slf4j
-public class InputStreamToLinesAdapter extends AsyncProducer<Triad<String, String[], String>> implements AsyncConsumer<Triad<InputStreamMeta, LinesReaderConfigs, InputStream>> {
+public class InputStreamToLinesAdapter extends AsyncProducer<Triad<String, String[], String>>
+        implements AsyncConsumer<N4ple<InputStreamMeta, LinesReadingMeta, LinesReaderConfigs, InputStream>> {
 
     //No multiple extension in java, so implement + Delegate
     @Delegate
-    private final AsyncConsumingTask<Triad<InputStreamMeta, LinesReaderConfigs, InputStream>> consumerImpl;
+    private final AsyncConsumingTask<N4ple<InputStreamMeta, LinesReadingMeta, LinesReaderConfigs, InputStream>> consumerImpl;
 
     public InputStreamToLinesAdapter(AsyncConsumer<Triad<String, String[], String>> producersConsumer) {
         super(producersConsumer);
-        this.consumerImpl = new S3InputConsumerDelegator();
+        this.consumerImpl = new InputStreamConsumerDelegator();
     }
 
 
-    class S3InputConsumerDelegator extends AsyncConsumingTask<Triad<InputStreamMeta, LinesReaderConfigs, InputStream>> {
+    class InputStreamConsumerDelegator extends AsyncConsumingTask<N4ple<InputStreamMeta, LinesReadingMeta, LinesReaderConfigs, InputStream>> {
 
 
-        public S3InputConsumerDelegator() {
+        public InputStreamConsumerDelegator() {
             super(1); //Allow to process one file at the time
         }
 
         @Override
-        protected void offer(AsyncDecorator<Triad<InputStreamMeta, LinesReaderConfigs, InputStream>> decorator) {
-            Triad<InputStreamMeta, LinesReaderConfigs, InputStream> triad = decorator.object();
-            LinesReaderConfigs.ReadingConfig config = triad.b().getReadingConfig();
-            InputStreamMeta parameters = triad.a();
-            String fileName = parameters.fileName();
+        protected void offer(AsyncDecorator<N4ple<InputStreamMeta, LinesReadingMeta, LinesReaderConfigs, InputStream>> decorator) {
+            N4ple<InputStreamMeta, LinesReadingMeta, LinesReaderConfigs, InputStream> triad = decorator.object();
+            LinesReaderConfigs.ReadingConfig config = triad.c().getReadingConfig();
+            LinesReadingMeta parameters = triad.b();
+            String fileName = triad.a().fileName();
             long lastReadLineNumber = -1;
             AtomicLong totalTime = new AtomicLong(0); //Keeps track of the total time spent in the process
             AtomicLong errorCount = new AtomicLong(0); //Amount of errors occurred here or down the chain
@@ -50,9 +54,10 @@ public class InputStreamToLinesAdapter extends AsyncProducer<Triad<String, Strin
             long startTime = System.currentTimeMillis();
             boolean fail = false;//in case there is an exception, will be used not to busy-wait
 
+            long contentLength = triad.a().contentLength();
             //Maybe we need to clean previous failure reports here
-
-            try (LineNumberReader br = new LineNumberReader(new InputStreamReader(triad.c(), StandardCharsets.UTF_8))) {
+            CountingInputStream is = new CountingInputStream(triad.d());
+            try (LineNumberReader br = new LineNumberReader(new InputStreamReader(is, StandardCharsets.UTF_8))) {
 
                 log.debug("Reading file: {} ", fileName);
 
@@ -69,7 +74,8 @@ public class InputStreamToLinesAdapter extends AsyncProducer<Triad<String, Strin
                     log.trace("Read line {} from file:{} ", br.getLineNumber(), fileName);
                     String[] fileColumns = line.split(config.delimiter());
 
-                    Assert.isTrue((double) errorCount.get() * 100 / br.getLineNumber() <= parameters.errorThreshold(), () -> "Error threshold is higher than configured");
+                    double bytesReadInErrors = (double) is.getByteCount() / errorCount.get() ;
+                    Assert.isTrue(bytesReadInErrors / contentLength * 100   <= parameters.errorThreshold(), () -> "Error threshold is higher than configured");
                     //Validate the line we read, we should be able to get at least the segment list
                     if (!StringUtils.hasText(line) || fileColumns.length < config.segmentColumnIndexInFile()) {
                         errorCount.incrementAndGet();
@@ -120,7 +126,5 @@ public class InputStreamToLinesAdapter extends AsyncProducer<Triad<String, Strin
             }
         }
     }
-
-    ;
 }
 

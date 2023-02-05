@@ -15,9 +15,10 @@ import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.AmazonS3ClientBuilder;
 import lombok.extern.slf4j.Slf4j;
 import mad.max.aeroload.model.consumer.AerospikeAsyncOperateCaller;
-import mad.max.aeroload.model.producer.LinesReaderConfigs;
-import mad.max.aeroload.model.producer.LocalDirInputStreamProducer;
-import mad.max.aeroload.model.producer.S3BucketInputStreamProducer;
+import mad.max.aeroload.model.producer.base.LinesReaderConfigs;
+import mad.max.aeroload.model.producer.LocalFileSystem;
+import mad.max.aeroload.model.producer.S3FileSystem;
+import mad.max.aeroload.model.producer.InputStreamProducer;
 import mad.max.aeroload.model.transformer.InputStreamParameterAdder;
 import mad.max.aeroload.model.transformer.InputStreamToLinesAdapter;
 import mad.max.aeroload.model.transformer.LinesToAerospikeObjectsAdapter;
@@ -44,7 +45,8 @@ public class LoadingService {
     private String bucketName;
     @Value("${job.suggested.profile:DEFAULT}")
     private LinesReaderConfigs linesReaderConfigs;
-    private String strategy;
+    @Value("${job.fileSystem:LOCAL}")
+    private String fs;
 
     public void load(LoadingProfile loadingProfile) {
 
@@ -53,21 +55,30 @@ public class LoadingService {
             //========================================================================================================
             //This is the synk, all things that got here through the chain will end up in aerospike
             AerospikeAsyncOperateCaller aerospikeLoader = new AerospikeAsyncOperateCaller(client, loadingProfile);
-            //This takes the product from the previous chain and creates one key/operation(1+) and pushes ↑ to the next chain
+            //This takes the get from the previous chain and creates one key/operation(1+) and pushes ↑ to the next chain
             LinesToAerospikeObjectsAdapter linesToAerospikeObjectsAdapter = new LinesToAerospikeObjectsAdapter(aerospikeLoader);
-            //This takes the product from the previous chain and creates one element per line in the file then pushes ↑ to the next in the chain
+            //This takes the get from the previous chain and creates one element per line in the file then pushes ↑ to the next in the chain
             InputStreamToLinesAdapter inputStreamToLinesAdapter = new InputStreamToLinesAdapter(linesToAerospikeObjectsAdapter);
-            //This takes the product from the previous chain and adds metadata to it then pushes ↑ to the next in the chain
+            //This takes the get from the previous chain and adds metadata to it then pushes ↑ to the next in the chain
             InputStreamParameterAdder inputStreamParameterAdder = new InputStreamParameterAdder(linesReaderConfigs, inputStreamToLinesAdapter);
-            //First create a producer, to push elements to the next in the chain ↑
-            //These producers are Runnable just for convenience
-            var producer = switch (strategy) {
-                case "S3" -> new S3BucketInputStreamProducer(s3Client(accessKey, secretKey), bucketName, inputStreamParameterAdder);
-                case "local" -> new LocalDirInputStreamProducer(bucketName, inputStreamParameterAdder);
+
+            //Create a producer, to push elements to the next in the chain ↑
+            //Filesystem, encapsulate files operations
+            var fs = switch (this.fs.toLowerCase()) {
+                case "s3" -> new S3FileSystem(s3Client(accessKey, secretKey), bucketName);
+                case "local" -> new LocalFileSystem(bucketName);
             };
+            //These producers are Runnable just for convenience
+            InputStreamProducer producer = new InputStreamProducer(inputStreamParameterAdder, fs);
             //↑  ↑  ↑  From this point  ↑  ↑  ↑
             //========================================================================================================
+
             aerospikeLoader.spinOff();//The aerospikeLoader goes off in another thread...
+
+            producer.addFilter(im->im.contentLength()>0);
+            producer.addFilter(im->im.fileName().startsWith("/dire"));
+            producer.addFilter(im->im.fileName().contains("_web_segments_"));
+            producer.addFilter(im->im.fileName().contains("_device_segments_"));
             producer.run();
             aerospikeLoader.waitToFinish();
             System.out.println(aerospikeLoader.stats());
