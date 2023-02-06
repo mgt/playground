@@ -45,13 +45,13 @@ public class ShellSupport {
     }
 
     @ShellMethod("Run job")
-    public void run(@ShellOption(defaultValue = "DEFAULT") LoadingProfile.PredefinedProfiles profile, long limit) {
+    public void run(@ShellOption(defaultValue = "DEFAULT") LoadingProfile.PredefinedProfiles profile, @ShellOption(defaultValue = "0")  long limit) {
         StopWatch timeMeasure = new StopWatch();
         timeMeasure.start();
         LoadingProfile p = profile.getProfile();
         loadingService.load(new LoadingProfile(p.getMaxThroughput(), limit > 0 ? limit : p.getMaxLinesPerFile(), p.getMaxParallelCommands(), p.getMaxQueuedElements(),p.getMaxErrorThreshold()));
         timeMeasure.stop();
-        System.out.println("run running time=" + timeMeasure.getLastTaskTimeMillis());
+        System.out.printf("#run time=%dms%n", timeMeasure.getLastTaskTimeMillis());
     }
 
     @ShellMethod("check key")

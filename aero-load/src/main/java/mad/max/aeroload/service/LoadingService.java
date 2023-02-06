@@ -15,6 +15,7 @@ import mad.max.aeroload.model.producer.base.FileSystem;
 import mad.max.aeroload.model.producer.base.InputStreamMeta;
 import mad.max.aeroload.model.transformer.InputStreamParameterAdder;
 import mad.max.aeroload.model.transformer.InputStreamToLines;
+import mad.max.aeroload.model.transformer.LinesReadingParameters;
 import mad.max.aeroload.model.transformer.LinesToAerospikeObjects;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -58,7 +59,9 @@ public class LoadingService {
             //This takes the get from the previous chain and creates one element per line in the file then pushes ↑ to the next in the chain
             InputStreamToLines inputStreamToLines = new InputStreamToLines(linesToAerospikeObjects);
             //This takes the get from the previous chain and adds metadata to it then pushes ↑ to the next in the chain
-            InputStreamParameterAdder inputStreamParameterAdder = new InputStreamParameterAdder(SEGMENTS, SEGMENT_BIN_NAME, loadingProfile.getMaxErrorThreshold() , inputStreamToLines);
+            InputStreamParameterAdder inputStreamParameterAdder = new InputStreamParameterAdder(SEGMENTS,
+                    new LinesReadingParameters(0, loadingProfile.getMaxLinesPerFile(),  loadingProfile.getMaxErrorThreshold(), f->SEGMENT_BIN_NAME) ,
+                    inputStreamToLines);
 
             //Create a producer, to push elements to the next in the chain ↑
             //fs:Filesystem, encapsulate files operations
@@ -74,12 +77,12 @@ public class LoadingService {
             Predicate<InputStreamMeta> webSegments = im -> im.fileName().contains("_web_segments_");
             Predicate<InputStreamMeta> deviceSegments = im -> im.fileName().contains("_device_segments_");
             producer.addFilter(deviceSegments.or(webSegments));
+            // discarding the future. No need to use it here.
+            ScheduledFuture<?> scheduledFuture = scheduler.scheduleAtFixedRate(() -> log.info(aerospikeLoader.stats()), 10L, 10L, TimeUnit.SECONDS);
             producer.run();
 
-            // discarding the future. No need to use it here.
-            ScheduledFuture<?> scheduledFuture = scheduler.scheduleAtFixedRate(() -> System.out.println(aerospikeLoader.stats()), 10L, 10L, TimeUnit.SECONDS);
-
             aerospikeLoader.waitToFinish();
+            linesToAerospikeObjects.close();
             scheduledFuture.cancel(true);
         }
     }

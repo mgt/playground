@@ -21,6 +21,11 @@ public class InputStreamParameterAdder extends AsyncProducer<N4ple<InputStreamMe
         this.linesReaderParams=  new LinesReadingParameters( 0, Long.MAX_VALUE, errorThreshold, fn-> segmentsBinName);
     }
 
+    public InputStreamParameterAdder(LinesReaderConfigs config, LinesReadingParameters parameters, AsyncConsumer<N4ple<InputStreamMeta, LinesReadingParameters, LinesReaderConfigs, InputStream>> consumer) {
+        super(consumer);
+        this.linesReaderConfigs = config;
+        this.linesReaderParams=  parameters;
+    }
     @Override
     public void accept(Pair<InputStreamMeta, InputStream> product, Observer observer) {
         this.push(new N4ple<>(product.a(),linesReaderParams, linesReaderConfigs, product.b()), observer);

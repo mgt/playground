@@ -21,6 +21,9 @@ import java.util.Date;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -33,6 +36,12 @@ public class AerospikeAsyncOperateCaller extends AsyncConsumingTask<Pair<Key, Op
     private final Throttles throttles;
     private final Counts counts;
     private final int maxThroughput;
+
+    private static final ExecutorService EXECUTOR_SERVICE = Executors.newFixedThreadPool(4, r -> {
+        Thread thread = new Thread(r);
+        thread.setName(AerospikeAsyncOperateCaller.class.getCanonicalName() + "-Observer");
+        return thread;
+    });
 
 
     public AerospikeAsyncOperateCaller(AerospikeClient client, LoadingProfile loadingProfile) {
@@ -132,7 +141,7 @@ public class AerospikeAsyncOperateCaller extends AsyncConsumingTask<Pair<Key, Op
             counts.writeProcessingCount.decrementAndGet();
             counts.writeCompletedCount.incrementAndGet();
             counts.registerTime(time);
-            Optional.ofNullable(observer).ifPresent(h -> CompletableFuture.runAsync(h::onSuccess));
+            Optional.ofNullable(observer).ifPresent(h -> CompletableFuture.runAsync(h::onSuccess, EXECUTOR_SERVICE));
         }
 
         // Error callback.
@@ -169,7 +178,7 @@ public class AerospikeAsyncOperateCaller extends AsyncConsumingTask<Pair<Key, Op
                 // Your application should respond by delaying commands in a non-event loop thread until eventLoop.getQueueSize() is sufficiently low.
                 counts.haltSignal.set(true);
                 log.warn("Error received signify load on aerospike server. Will wait for {} {}", 1, TimeUnit.SECONDS, e);
-                CompletableFuture.delayedExecutor(1, TimeUnit.SECONDS).execute(() -> {
+                CompletableFuture.delayedExecutor(1, TimeUnit.SECONDS,EXECUTOR_SERVICE).execute(() -> {
                             log.info("Restarting operations after {} {}", 1, TimeUnit.SECONDS);
                             counts.haltSignal.set(false);
                         }
@@ -177,7 +186,7 @@ public class AerospikeAsyncOperateCaller extends AsyncConsumingTask<Pair<Key, Op
 
             }
             if (Objects.nonNull(observer))
-                CompletableFuture.runAsync(() -> observer.onFail(ResultCode.getResultString(e.getResultCode())));
+                CompletableFuture.runAsync(() -> observer.onFail(ResultCode.getResultString(e.getResultCode())), EXECUTOR_SERVICE );
         }
     }
 
@@ -220,7 +229,7 @@ public class AerospikeAsyncOperateCaller extends AsyncConsumingTask<Pair<Key, Op
             // Elapsed time in ms
             long elapsedTime = getElapsedTime();
             // Transaction per second
-            double tps = 1000 * (this.writeCompletedCount.get() + this.writeErrors.get()) / (double) elapsedTime;
+            double tps = 1000 * ((double) this.writeCompletedCount.get() + this.writeErrors.get()) / elapsedTime;
 
             return String.format("StartedAt:%s (duration:%f(min) processed:%d inProgress:%d queued:%d) " +
                             "Write(throughput:%dops/ms tps:%f/s bestTime:%d worstTime:%d) " +
