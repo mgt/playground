@@ -71,7 +71,7 @@ public class AerospikeAsyncOperateCaller extends AsyncConsumingTask<Pair<Key, Op
         // the worst time a task take to complete, and it's best
         // or a minimum amount
         if (maxThroughput > 0 && exceedingThroughput()) {
-            log.info("Configured throughput of {} was exceeded", maxThroughput);
+            log.debug("Configured throughput of {} was exceeded", maxThroughput);
             counts.writeQueuedCount.incrementAndGet();
             do {
                 long sleepingTime = counts.getTaskAvgElapsedTime();

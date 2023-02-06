@@ -11,8 +11,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
 import java.util.function.Function;
 import java.util.function.Predicate;
 
@@ -35,11 +33,10 @@ public class InputStreamProducer extends AsyncProducer<Pair<InputStreamMeta, Inp
     public void run() {
         for (String fileName : fileSystem.ls()) {
 
-            if (!fileName.contains("_part000"))
+            if (!fileName.contains("_part000") || fileName.endsWith(".success") || fileName.endsWith(".failure"))
                 continue;
 
-            CompletableFuture<Void> future = this.processMultipart(fileName, 0,CompletableFuture.completedFuture(null) );
-            future.join();
+             this.processMultipart(fileName, 0);
         }
     }
 
@@ -87,16 +84,15 @@ public class InputStreamProducer extends AsyncProducer<Pair<InputStreamMeta, Inp
         if (i == 0)
             return key;
         String part = "_part%03d".formatted(i);
-        return FilenameUtils.getBaseName(key).replace("_part000", part) + part + FilenameUtils.getExtension(key);
+        return FilenameUtils.getFullPath(key)+  FilenameUtils.getBaseName(key).replace("_part000", part) + "." + FilenameUtils.getExtension(key);
     }
 
-    private CompletableFuture<Void> processMultipart(String key, int i, CompletableFuture<Void> previous) {
+    private void processMultipart(String key, int i) {
         String newKey = partName(key, i);
         if (fileSystem.fileExist(newKey)) {
-            CompletableFuture<Void> c = CompletableFuture.allOf(previous, CompletableFuture.runAsync(()->this.process(newKey)));
-            return processMultipart(key, i+1, c);
+            this.process(newKey);
+            this.processMultipart(key, i+1);
         }
-        return previous;
     }
 
     private boolean shouldProcess(InputStreamMeta meta) {
