@@ -15,12 +15,12 @@ import mad.max.aeroload.model.producer.base.AsyncProducer;
 import java.util.Arrays;
 
 @Slf4j
-public class LinesToAerospikeObjectsAdapter extends AsyncProducer<Pair<Key, Operation[]>> implements AsyncConsumer<Triad<String, String[],String>> {
+public class LinesToAerospikeObjects extends AsyncProducer<Pair<Key, Operation[]>> implements AsyncConsumer<Triad<String, String[],String>> {
     public static final ListPolicy POLICY = new ListPolicy(ListOrder.UNORDERED, ListWriteFlags.ADD_UNIQUE | ListWriteFlags.NO_FAIL);
     public static final String SET_NAME = "audience_targeting_segments";
     public static final String NAMESPACE = "tempcache";
 
-    public LinesToAerospikeObjectsAdapter(AsyncConsumer<Pair<Key, Operation[]>> consumer) {
+    public LinesToAerospikeObjects(AsyncConsumer<Pair<Key, Operation[]>> consumer) {
         super(consumer);
     }
 

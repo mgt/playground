@@ -14,8 +14,8 @@ import mad.max.aeroload.model.producer.InputStreamProducer;
 import mad.max.aeroload.model.producer.base.FileSystem;
 import mad.max.aeroload.model.producer.base.InputStreamMeta;
 import mad.max.aeroload.model.transformer.InputStreamParameterAdder;
-import mad.max.aeroload.model.transformer.InputStreamToLinesAdapter;
-import mad.max.aeroload.model.transformer.LinesToAerospikeObjectsAdapter;
+import mad.max.aeroload.model.transformer.InputStreamToLines;
+import mad.max.aeroload.model.transformer.LinesToAerospikeObjects;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -54,11 +54,11 @@ public class LoadingService {
             //This is the synk, all things that got here through the chain will end up in aerospike
             AerospikeAsyncOperateCaller aerospikeLoader = new AerospikeAsyncOperateCaller(client, loadingProfile);
             //This takes the get from the previous chain and creates one key/operation(1+) and pushes ↑ to the next chain
-            LinesToAerospikeObjectsAdapter linesToAerospikeObjectsAdapter = new LinesToAerospikeObjectsAdapter(aerospikeLoader);
+            LinesToAerospikeObjects linesToAerospikeObjects = new LinesToAerospikeObjects(aerospikeLoader);
             //This takes the get from the previous chain and creates one element per line in the file then pushes ↑ to the next in the chain
-            InputStreamToLinesAdapter inputStreamToLinesAdapter = new InputStreamToLinesAdapter(linesToAerospikeObjectsAdapter);
+            InputStreamToLines inputStreamToLines = new InputStreamToLines(linesToAerospikeObjects);
             //This takes the get from the previous chain and adds metadata to it then pushes ↑ to the next in the chain
-            InputStreamParameterAdder inputStreamParameterAdder = new InputStreamParameterAdder(SEGMENTS, SEGMENT_BIN_NAME, loadingProfile.getMaxErrorThreshold() , inputStreamToLinesAdapter);
+            InputStreamParameterAdder inputStreamParameterAdder = new InputStreamParameterAdder(SEGMENTS, SEGMENT_BIN_NAME, loadingProfile.getMaxErrorThreshold() , inputStreamToLines);
 
             //Create a producer, to push elements to the next in the chain ↑
             //fs:Filesystem, encapsulate files operations

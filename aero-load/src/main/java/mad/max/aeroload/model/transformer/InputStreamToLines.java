@@ -22,14 +22,14 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.zip.GZIPInputStream;
 
 @Slf4j
-public class InputStreamToLinesAdapter extends AsyncProducer<Triad<String, String[], String>>
+public class InputStreamToLines extends AsyncProducer<Triad<String, String[], String>>
         implements AsyncConsumer<N4ple<InputStreamMeta, LinesReadingParameters, LinesReaderConfigs, InputStream>> {
 
     //No multiple extension in java, so implement + Delegate
     @Delegate
     private final AsyncConsumer<N4ple<InputStreamMeta, LinesReadingParameters, LinesReaderConfigs, InputStream>> consumerImpl;
 
-    public InputStreamToLinesAdapter(AsyncConsumer<Triad<String, String[], String>> producersConsumer) {
+    public InputStreamToLines(AsyncConsumer<Triad<String, String[], String>> producersConsumer) {
         super(producersConsumer);
         this.consumerImpl = new InputStreamConsumerDelegator();
 
@@ -74,8 +74,12 @@ public class InputStreamToLinesAdapter extends AsyncProducer<Triad<String, Strin
                     log.trace("Read line {} from file:{} ", br.getLineNumber(), fileName);
                     String[] fileColumns = line.split(config.delimiter());
 
-                    double bytesReadInErrors = errorCount.get() ==0?0: (double) cis.getByteCount() / errorCount.get() ;
-                    Assert.isTrue(bytesReadInErrors / contentLength * 100   <= parameters.errorThreshold(), () -> "Error threshold is higher than configured");
+                    final long totalProcessed = Math.max(errorCount.get() + okCount.get(), 1);
+                    final long bytesRead = cis.getByteCount();
+                    final long totalErrors = errorCount.get();
+                    final double bytesReadInErrors =  (double) totalErrors * bytesRead / totalProcessed;
+                    final double threshold = bytesReadInErrors / contentLength * 100;
+                    Assert.isTrue(parameters.errorThreshold() > threshold, () -> "Current threshold %f is higher than configured %d".formatted( threshold, parameters.errorThreshold()));
                     //Validate the line we read, we should be able to get at least the segment list
                     if (!StringUtils.hasText(line) || fileColumns.length < config.segmentColumnIndexInFile()) {
                         errorCount.incrementAndGet();
@@ -90,13 +94,13 @@ public class InputStreamToLinesAdapter extends AsyncProducer<Triad<String, Strin
                     //Configuring observers for downStream, they are going to be called async
                     InputStreamToLinesObserver observe = new InputStreamToLinesObserver(okCount, errorCount, totalTime, fileName, keyString,
                             fileColumns[config.segmentColumnIndexInFile()], System.currentTimeMillis(), br.getLineNumber());
-                    InputStreamToLinesAdapter.this.push(new Triad<>(keyString, listString, parameters.function().apply(fileName) ), observe);
+                    InputStreamToLines.this.push(new Triad<>(keyString, listString, parameters.function().apply(fileName) ), observe);
                     lastReadLineNumber = br.getLineNumber();
                 }
                 //Because I am an AsyncConsumer, my producer gave me an observer, so my duty is calling it to notify of success processing
                 if (okCount.get() + errorCount.get() == lastReadLineNumber)
                    observer.onSuccess();
-            } catch (Exception e) {//Unrecoverable scenario, we don't know the nature of the error
+            } catch (Exception e) {//Unrecoverable scenario
                 //given it's the last statement in the cycle probably we did not get to update
                 // lastReadLineNumber and the error occurred in the next line
                 log.error("Error processing file {}: Line:{} ", fileName, lastReadLineNumber + 1, e);

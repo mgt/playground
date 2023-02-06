@@ -28,10 +28,10 @@ import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 import static mad.max.aeroload.model.producer.base.LinesReaderConfigs.SEGMENT_BIN_NAME;
-import static mad.max.aeroload.model.transformer.LinesToAerospikeObjectsAdapter.NAMESPACE;
-import static mad.max.aeroload.model.transformer.LinesToAerospikeObjectsAdapter.POLICY;
-import static mad.max.aeroload.model.transformer.LinesToAerospikeObjectsAdapter.SET_NAME;
-import static mad.max.aeroload.model.transformer.LinesToAerospikeObjectsAdapter.getKey;
+import static mad.max.aeroload.model.transformer.LinesToAerospikeObjects.NAMESPACE;
+import static mad.max.aeroload.model.transformer.LinesToAerospikeObjects.POLICY;
+import static mad.max.aeroload.model.transformer.LinesToAerospikeObjects.SET_NAME;
+import static mad.max.aeroload.model.transformer.LinesToAerospikeObjects.getKey;
 
 @Slf4j
 @ShellComponent
