@@ -7,10 +7,10 @@ import com.aerospike.client.cdt.ListOrder;
 import com.aerospike.client.cdt.ListPolicy;
 import com.aerospike.client.cdt.ListWriteFlags;
 import lombok.extern.slf4j.Slf4j;
-import mad.max.aeroload.model.consumer.base.AsyncConsumer;
-import mad.max.aeroload.model.producer.base.AsyncProducer;
 import mad.max.aeroload.model.base.Pair;
 import mad.max.aeroload.model.base.Triad;
+import mad.max.aeroload.model.consumer.base.AsyncConsumer;
+import mad.max.aeroload.model.producer.base.AsyncProducer;
 
 import java.util.Arrays;
 

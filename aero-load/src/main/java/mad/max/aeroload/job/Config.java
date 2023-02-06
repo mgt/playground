@@ -13,7 +13,10 @@ import com.amazonaws.auth.BasicAWSCredentials;
 import com.amazonaws.regions.Regions;
 import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.AmazonS3ClientBuilder;
+import mad.max.aeroload.model.producer.LocalFileSystem;
+import mad.max.aeroload.model.producer.S3FileSystem;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -59,6 +62,29 @@ public class Config {
         Host[] hosts = Host.parseHosts(host, port);
 
         return new AerospikeClient(policy, hosts);
+    }
+
+    @Bean
+    @ConditionalOnProperty(value = "job.fileSystem", havingValue = "local", matchIfMissing = true)
+    LocalFileSystem localFileSystem(@Value("${job.fileSystem.local.folder}") String folderName) {
+        //Filesystem, encapsulate files operations
+        return new LocalFileSystem(folderName);
+    }
+
+    @Bean
+    @ConditionalOnProperty(value = "job.fileSystem", havingValue = "s3")
+    S3FileSystem s3FileSystem(@Value("${job.fileSystem.s3.bucketName}") String bucketName,
+                            @Value("${AWS.secretkey}") String secretKey,
+                            @Value("${AWS.accesskey}") String accessKey) {
+        return new S3FileSystem(s3Client(accessKey, secretKey), bucketName);
+    }
+
+    public static AmazonS3 s3Client(String accessKey, String secretKey) {
+        return AmazonS3ClientBuilder
+                .standard()
+                .withCredentials(new AWSStaticCredentialsProvider(new BasicAWSCredentials(accessKey, secretKey)))
+                .withRegion(Regions.US_EAST_2)
+                .build();
     }
 
 }

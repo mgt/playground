@@ -1,8 +1,5 @@
 package mad.max.aeroload.model.consumer.base;
 
-import mad.max.aeroload.model.base.Triad;
-
-import java.io.InputStream;
 import java.util.function.Consumer;
 
 public interface AsyncConsumer<T> extends Consumer<T> {

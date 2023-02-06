@@ -1,12 +1,10 @@
 package mad.max.aeroload.model.producer;
 
-import com.amazonaws.util.Md5Utils;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import mad.max.aeroload.model.base.Pair;
 import mad.max.aeroload.model.producer.base.FileSystem;
 import mad.max.aeroload.model.producer.base.InputStreamMeta;
-import org.apache.commons.codec.digest.DigestUtils;
 import org.apache.commons.io.FileUtils;
 
 import java.io.File;
@@ -34,7 +32,10 @@ public class LocalFileSystem implements FileSystem {
     @SneakyThrows
     @Override
     public Iterable<String> ls() {
-        return Stream.of(Objects.requireNonNull(Path.of(localDir).toFile().list())).toList();
+        return Stream.of(Objects.requireNonNull(Path.of(localDir).toFile().list()))
+                .map(f-> Path.of(localDir, f))
+                .map(Path::toString)
+                .toList();
     }
 
 
@@ -43,7 +44,7 @@ public class LocalFileSystem implements FileSystem {
         File file = Path.of(filePath).toFile();
         FileInputStream data = new FileInputStream(file);
         InputStreamMeta inputStreamMeta =
-                new InputStreamMeta(filePath, file.length(), Md5Utils.md5AsBase64(DigestUtils.md5(data)), new Date(file.lastModified()));
+                new InputStreamMeta(filePath, file.length(), "", new Date(file.lastModified()));
         return new Pair<>(inputStreamMeta, data);
     }
 

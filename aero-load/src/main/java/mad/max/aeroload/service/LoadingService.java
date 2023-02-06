@@ -8,22 +8,26 @@ import com.aerospike.client.async.NioEventLoops;
 import com.aerospike.client.policy.ClientPolicy;
 import com.aerospike.client.policy.RecordExistsAction;
 import com.aerospike.client.policy.WritePolicy;
-import com.amazonaws.auth.AWSStaticCredentialsProvider;
-import com.amazonaws.auth.BasicAWSCredentials;
-import com.amazonaws.regions.Regions;
-import com.amazonaws.services.s3.AmazonS3;
-import com.amazonaws.services.s3.AmazonS3ClientBuilder;
 import lombok.extern.slf4j.Slf4j;
 import mad.max.aeroload.model.consumer.AerospikeAsyncOperateCaller;
-import mad.max.aeroload.model.producer.base.LinesReaderConfigs;
-import mad.max.aeroload.model.producer.LocalFileSystem;
-import mad.max.aeroload.model.producer.S3FileSystem;
 import mad.max.aeroload.model.producer.InputStreamProducer;
+import mad.max.aeroload.model.producer.base.FileSystem;
+import mad.max.aeroload.model.producer.base.InputStreamMeta;
 import mad.max.aeroload.model.transformer.InputStreamParameterAdder;
 import mad.max.aeroload.model.transformer.InputStreamToLinesAdapter;
 import mad.max.aeroload.model.transformer.LinesToAerospikeObjectsAdapter;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
+
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Predicate;
+
+import static mad.max.aeroload.model.producer.base.LinesReaderConfigs.SEGMENTS;
+import static mad.max.aeroload.model.producer.base.LinesReaderConfigs.SEGMENT_BIN_NAME;
 
 @Slf4j
 @Component
@@ -37,17 +41,11 @@ public class LoadingService {
     private int timeout;
     @Value("${aerospike.ttl-days:1}")
     private Integer ttl;
-    @Value("${AWS.accesskey}")
-    private String accessKey;
-    @Value("${AWS.secretkey}")
-    private String secretKey;
-    @Value("${AWS.bucketName}")
-    private String bucketName;
-    @Value("${job.suggested.profile:DEFAULT}")
-    private LinesReaderConfigs linesReaderConfigs;
-    @Value("${job.fileSystem:LOCAL}")
-    private String fs;
 
+    @Autowired
+    private FileSystem fs;
+
+    ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
     public void load(LoadingProfile loadingProfile) {
 
         try (AerospikeClient client = aerospikeClient(loadingProfile)) {
@@ -60,14 +58,10 @@ public class LoadingService {
             //This takes the get from the previous chain and creates one element per line in the file then pushes ↑ to the next in the chain
             InputStreamToLinesAdapter inputStreamToLinesAdapter = new InputStreamToLinesAdapter(linesToAerospikeObjectsAdapter);
             //This takes the get from the previous chain and adds metadata to it then pushes ↑ to the next in the chain
-            InputStreamParameterAdder inputStreamParameterAdder = new InputStreamParameterAdder(linesReaderConfigs, inputStreamToLinesAdapter);
+            InputStreamParameterAdder inputStreamParameterAdder = new InputStreamParameterAdder(SEGMENTS, SEGMENT_BIN_NAME, loadingProfile.getMaxErrorThreshold() , inputStreamToLinesAdapter);
 
             //Create a producer, to push elements to the next in the chain ↑
-            //Filesystem, encapsulate files operations
-            var fs = switch (this.fs.toLowerCase()) {
-                case "s3" -> new S3FileSystem(s3Client(accessKey, secretKey), bucketName);
-                case "local" -> new LocalFileSystem(bucketName);
-            };
+            //fs:Filesystem, encapsulate files operations
             //These producers are Runnable just for convenience
             InputStreamProducer producer = new InputStreamProducer(inputStreamParameterAdder, fs);
             //↑  ↑  ↑  From this point  ↑  ↑  ↑
@@ -76,12 +70,17 @@ public class LoadingService {
             aerospikeLoader.spinOff();//The aerospikeLoader goes off in another thread...
 
             producer.addFilter(im->im.contentLength()>0);
-            producer.addFilter(im->im.fileName().startsWith("/dire"));
-            producer.addFilter(im->im.fileName().contains("_web_segments_"));
-            producer.addFilter(im->im.fileName().contains("_device_segments_"));
+            producer.addFilter(im->im.fileName().contains("/upload"));
+            Predicate<InputStreamMeta> webSegments = im -> im.fileName().contains("_web_segments_");
+            Predicate<InputStreamMeta> deviceSegments = im -> im.fileName().contains("_device_segments_");
+            producer.addFilter(deviceSegments.or(webSegments));
             producer.run();
+
+            // discarding the future. No need to use it here.
+            ScheduledFuture<?> scheduledFuture = scheduler.scheduleAtFixedRate(() -> System.out.println(aerospikeLoader.stats()), 10L, 10L, TimeUnit.SECONDS);
+
             aerospikeLoader.waitToFinish();
-            System.out.println(aerospikeLoader.stats());
+            scheduledFuture.cancel(true);
         }
     }
 
@@ -117,11 +116,5 @@ public class LoadingService {
         return new AerospikeClient(policy, hosts);
     }
 
-    public static AmazonS3 s3Client(String accessKey, String secretKey) {
-        return AmazonS3ClientBuilder
-                .standard()
-                .withCredentials(new AWSStaticCredentialsProvider(new BasicAWSCredentials(accessKey, secretKey)))
-                .withRegion(Regions.US_EAST_2)
-                .build();
-    }
+
 }

@@ -2,10 +2,12 @@ package mad.max.aeroload.model.transformer;
 
 import lombok.extern.slf4j.Slf4j;
 import mad.max.aeroload.model.consumer.base.AsyncConsumer;
+import org.apache.commons.io.FilenameUtils;
 
-import java.io.FileWriter;
 import java.io.IOException;
-import java.io.Writer;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.util.concurrent.atomic.AtomicLong;
 
 @Slf4j
@@ -16,17 +18,18 @@ public record InputStreamToLinesObserver(AtomicLong okCount, AtomicLong errorCou
         long timeSpentOnOperate = System.currentTimeMillis() - tick;
         totalTime.addAndGet(timeSpentOnOperate);
         errorCount.getAndIncrement();
-        String f = String.format("%s\t%s\t%s\t%s%n", keyString, lineNumber, fileColumn, error);
+        String f = String.format("%d\t%s\t%s\t%s%n", lineNumber, keyString, fileColumn, error);
         log.error("Error processing file {}. {} ", file, f);
 
         writeReport(f);
     }
 
     private void writeReport(String f) {
-        try (Writer wr = new FileWriter(file + ".error", true)) {
-            wr.write(f);
+
+        try{
+            Files.writeString(Path.of(FilenameUtils.getPath(file), FilenameUtils.getBaseName(file) + ".retry"), f, StandardOpenOption.APPEND, StandardOpenOption.WRITE);
         } catch (IOException e) {//Sorry, nothing we can do about it.
-            log.warn("Cannot write report to \"{}.error\"", file, e);
+            log.warn("Cannot write report to \"{}.retry\"", FilenameUtils.getBaseName(file), e);
         }
     }
 

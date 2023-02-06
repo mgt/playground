@@ -33,7 +33,7 @@ public class InputStreamProducer extends AsyncProducer<Pair<InputStreamMeta, Inp
     public void run() {
         for (String fileName : fileSystem.ls()) {
 
-            if (fileName.contains("_part"))
+            if (!fileName.contains("_part000"))
                 continue;
 
             this.processMultipart(fileName, 0);
@@ -73,24 +73,28 @@ public class InputStreamProducer extends AsyncProducer<Pair<InputStreamMeta, Inp
     }
 
     private static String failureName(String name) {
-        return FilenameUtils.getBaseName(name) + ".failure";
+        return FilenameUtils.getFullPath(name) + FilenameUtils.getBaseName(name) + ".failure";
     }
+
     private static String successName(String name) {
-        return FilenameUtils.getBaseName(name) + ".success";
+        return FilenameUtils.getFullPath(name)+ FilenameUtils.getBaseName(name) + ".success";
     }
+
     private static String partName(String key, int i) {
-        String part = i == 0 ? "" : "_part" + "%02d".formatted(i);
-        return FilenameUtils.getBaseName(key) + part + FilenameUtils.getExtension(key);
+        if (i == 0)
+            return key;
+        String part = "_part%03d".formatted(i);
+        return FilenameUtils.getBaseName(key).replace("_part000", part) + part + FilenameUtils.getExtension(key);
     }
 
     private void processMultipart(String key, int i) {
         String newKey = partName(key, i);
         if (fileSystem.fileExist(newKey)) {
             this.process(newKey);
-            int nextIndex = i == 0 ? i + 2 : i + 1;
-            processMultipart(key, nextIndex);
+            processMultipart(key, i+1);
         }
     }
+
     private boolean shouldProcess(InputStreamMeta meta) {
         return filters.stream().allMatch(f -> f.test(meta));
     }
