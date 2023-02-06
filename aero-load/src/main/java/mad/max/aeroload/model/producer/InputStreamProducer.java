@@ -3,7 +3,7 @@ package mad.max.aeroload.model.producer;
 import mad.max.aeroload.model.base.Pair;
 import mad.max.aeroload.model.consumer.base.AsyncConsumer;
 import mad.max.aeroload.model.producer.base.AsyncProducer;
-import mad.max.aeroload.model.producer.base.FileSystem;
+import mad.max.aeroload.model.producer.base.filesystem.FileSystem;
 import mad.max.aeroload.model.producer.base.InputStreamMeta;
 import org.apache.commons.io.FilenameUtils;
 

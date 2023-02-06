@@ -1,4 +1,4 @@
-package mad.max.aeroload.model.producer;
+package mad.max.aeroload.model.producer.base.filesystem;
 
 
 import com.amazonaws.services.s3.AmazonS3;
@@ -10,7 +10,6 @@ import com.amazonaws.util.Md5Utils;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import mad.max.aeroload.model.base.Pair;
-import mad.max.aeroload.model.producer.base.FileSystem;
 import mad.max.aeroload.model.producer.base.InputStreamMeta;
 import org.apache.commons.codec.digest.DigestUtils;
 

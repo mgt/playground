@@ -1,6 +1,7 @@
-package mad.max.aeroload.model.producer.base;
+package mad.max.aeroload.model.producer.base.filesystem;
 
 import mad.max.aeroload.model.base.Pair;
+import mad.max.aeroload.model.producer.base.InputStreamMeta;
 
 import java.io.InputStream;
 

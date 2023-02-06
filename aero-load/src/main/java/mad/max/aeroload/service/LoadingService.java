@@ -11,7 +11,7 @@ import com.aerospike.client.policy.WritePolicy;
 import lombok.extern.slf4j.Slf4j;
 import mad.max.aeroload.model.consumer.AerospikeAsyncOperateCaller;
 import mad.max.aeroload.model.producer.InputStreamProducer;
-import mad.max.aeroload.model.producer.base.FileSystem;
+import mad.max.aeroload.model.producer.base.filesystem.FileSystem;
 import mad.max.aeroload.model.producer.base.InputStreamMeta;
 import mad.max.aeroload.model.transformer.InputStreamParameterAdder;
 import mad.max.aeroload.model.transformer.InputStreamToLines;
