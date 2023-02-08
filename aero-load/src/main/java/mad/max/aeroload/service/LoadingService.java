@@ -50,7 +50,6 @@ public class LoadingService {
     public static final String SET_NAME = "audience_targeting_segments";
     public static final String NAMESPACE = "tempcache";
 
-
     ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
 
     public void load(LoadingProfile loadingProfile) {
@@ -76,27 +75,25 @@ public class LoadingService {
             //========================================================================================================
             //This is the synk, all things that got here through the chain will end up in aerospike
             AerospikeAsyncOperateCaller aerospikeLoader = new AerospikeAsyncOperateCaller(client, aerospikeParameters);
-            //This takes the get from the previous chain and creates one key/operation(1+) and pushes ↑ to the next chain
+            //This takes the line from the previous step and creates one key/operation(1+) and pushes ↑ to the next chain
             LinesToAerospikeObjects linesToAerospikeObjects = new LinesToAerospikeObjects(aerospikeLoader, linesToAerospikeParameters);
-            //This takes the get from the previous chain and creates one element per line in the file then pushes ↑ to the next in the chain
+            //This reads the inputStream and creates one element per line then pushes ↑ to the next in the chain
             InputStreamToLines inputStreamToLines = new InputStreamToLines(linesToAerospikeObjects, linesReadingParameters);
             //Create a producer, to push elements to the next in the chain ↑
             //fs:Filesystem, encapsulate files operations
-            //These producers are Runnable just for convenience
             InputStreamProducer producer = new InputStreamProducer(inputStreamToLines, fs);
             //↑  ↑  ↑  From this point  ↑  ↑  ↑
             //========================================================================================================
 
             aerospikeLoader.spinOff();//The aerospikeLoader goes off in another thread...
 
-            producer.addFilter(im -> im.contentLength() > 0);
-            producer.addFilter(im -> im.fileName().contains("/upload"));
-            Predicate<InputStreamMeta> webSegments = im -> im.fileName().contains("_web_segments_");
-            Predicate<InputStreamMeta> deviceSegments = im -> im.fileName().contains("_device_segments_");
-            producer.addFilter(deviceSegments.or(webSegments));
+            //Configuring the producer
+            producer.addFilter(im -> im.contentLength() > 0); //to ignore folders
+            producer.addFilter(im -> im.fileName().contains(SEGMENTS.getReadingConfig().folderLocation())); //to only explore subfolder we are interested
+            producer.addFilter(im->SEGMENTS.getReadingConfig().namePatter().matcher(im.fileName()).matches() ); //to only accept files matching name
             // discarding the future. No need to use it here.
             ScheduledFuture<?> scheduledFuture = scheduler.scheduleAtFixedRate(() -> log.info(aerospikeLoader.stats()), 10L, 10L, TimeUnit.SECONDS);
-            producer.run();
+            producer.run(); //These producers are Runnable just for convenience
 
             aerospikeLoader.waitToFinish();
             linesToAerospikeObjects.close();

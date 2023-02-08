@@ -2,11 +2,13 @@ package mad.max.aeroload.model.producer.base;
 
 import lombok.Getter;
 
+import java.util.regex.Pattern;
+
 @Getter
 public enum LinesReaderConfigs {
-    SEGMENTS(new ReadingConfig("\t", ",", 1, false, true)),
-    DEFAULT(new ReadingConfig("\t", ",", 1, false, false)),
-    RETRY(new ReadingConfig("\t", ",", 2, true, false ));
+    SEGMENTS(new ReadingConfig(Pattern.compile(".*_web_segments_.*|.*_device_segments_.*"), "/upload","\t", ",", 1, false, true)),
+    DEFAULT(new ReadingConfig(Pattern.compile(".*"),"","\t", ",", 1, false, false)),
+    RETRY(new ReadingConfig(Pattern.compile(".*\\.rety"), "","\t", ",", 2, true, false ));
 
     public static final String SEGMENT_BIN_NAME = "segments" ;
     private final ReadingConfig readingConfig;
@@ -15,6 +17,6 @@ public enum LinesReaderConfigs {
         this.readingConfig = readingConfig;
     }
 
-    public record ReadingConfig(String delimiter, String segmentDelimiter, int segmentColumnIndexInFile, boolean hasHeader, boolean isCompressed) {
+    public record ReadingConfig(Pattern namePatter, String folderLocation, String delimiter, String segmentDelimiter, int segmentColumnIndexInFile, boolean hasHeader, boolean isCompressed) {
     }
 }
