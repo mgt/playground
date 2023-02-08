@@ -5,11 +5,11 @@ import com.aerospike.client.Bin;
 import com.aerospike.client.Key;
 import com.aerospike.client.Operation;
 import com.aerospike.client.Record;
-import com.aerospike.client.cdt.ListOperation;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import mad.max.aeroload.service.LoadingProfile;
 import mad.max.aeroload.service.LoadingService;
+import mad.max.aeroload.utils.AeroUtils;
 import mad.max.aeroload.utils.UUIDUtils;
 import org.springframework.shell.standard.ShellComponent;
 import org.springframework.shell.standard.ShellMethod;
@@ -27,10 +27,10 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
-import static mad.max.aeroload.model.producer.base.LinesReaderConfigs.SEGMENT_BIN_NAME;
-import static mad.max.aeroload.model.transformer.LinesToAerospikeObjects.POLICY;
-import static mad.max.aeroload.service.LoadingService.NAMESPACE;
-import static mad.max.aeroload.service.LoadingService.SET_NAME;
+import static mad.max.aeroload.model.producer.base.LoadingFileType.SEGMENTS;
+import static mad.max.aeroload.utils.AeroUtils.NAMESPACE;
+import static mad.max.aeroload.utils.AeroUtils.SEGMENT_BIN_NAME;
+import static mad.max.aeroload.utils.AeroUtils.SET_NAME;
 
 @Slf4j
 @ShellComponent
@@ -44,18 +44,18 @@ public class ShellSupport {
     }
 
     @ShellMethod("Run job")
-    public void run(@ShellOption(defaultValue = "DEFAULT") LoadingProfile.PredefinedProfiles profile, @ShellOption(defaultValue = "0")  long limit) {
+    public void run(@ShellOption(defaultValue = "DEFAULT") LoadingProfile.PredefinedProfiles profile, @ShellOption(defaultValue = "0") long limit) {
         StopWatch timeMeasure = new StopWatch();
         timeMeasure.start();
         LoadingProfile p = profile.getProfile();
-        loadingService.load(new LoadingProfile(p.getMaxThroughput(), limit > 0 ? limit : p.getMaxLinesPerFile(), p.getMaxParallelCommands(), p.getMaxQueuedElements(),p.getMaxErrorThreshold()));
+        loadingService.load(new LoadingProfile(p.getMaxThroughput(), limit > 0 ? limit : p.getMaxLinesPerFile(), p.getMaxParallelCommands(), p.getMaxQueuedElements(), p.getMaxErrorThreshold()), SEGMENTS);
         timeMeasure.stop();
         System.out.printf("#run time=%dms%n", timeMeasure.getLastTaskTimeMillis());
     }
 
     @ShellMethod("check key")
     public void check(String k) {
-        Key key = getKey(k);
+        Key key = AeroUtils.getKey(k);
         Record record = client.get(client.readPolicyDefault, key);
         System.out.printf("key:%s%n", k);
         System.out.printf("size:%d%n", record.getList(SEGMENT_BIN_NAME).size());
@@ -65,17 +65,14 @@ public class ShellSupport {
 
     @ShellMethod("operation to try limit on one key")
     public void tryLimit(String k, @ShellOption(value = "c", defaultValue = "10000") int count, @ShellOption(value = "m", defaultValue = "v") String putMode) {
-        Key key = getKey(k);
+        Key key = AeroUtils.getKey(k);
         Stream<String> str = IntStream.range(0, count)
                 .mapToObj(i -> "100" + String.format("%07d", i));
         if ("string".equals(putMode)) {
             client.put(client.writePolicyDefault, key, new Bin(SEGMENT_BIN_NAME, str.collect(Collectors.joining(","))));
         } else {
-            Operation[] operations =
-                    str
-                            .map(com.aerospike.client.Value::get)
-                            .map(v -> ListOperation.append(POLICY, SEGMENT_BIN_NAME, v))
-                            .toArray(Operation[]::new);
+
+            Operation[] operations = AeroUtils.getAppendIfNotExistOperations(SEGMENT_BIN_NAME, str.toArray(String[]::new));
             client.operate(client.writePolicyDefault, key, operations);
         }
     }
@@ -93,7 +90,7 @@ public class ShellSupport {
 
         List<Key> keys = IntStream.range(0, count)
                 .mapToObj(i -> ThreadLocalRandom.current().nextLong())
-                .map(i -> getKey(UUIDUtils.nameUUIDFromNamespaceAndString(UUIDUtils.NAMESPACE, i + "")))
+                .map(i -> AeroUtils.getKey(UUIDUtils.nameUUIDFromNamespaceAndString(UUIDUtils.NAMESPACE, i + "")))
                 .toList();
 
 
@@ -103,12 +100,9 @@ public class ShellSupport {
                 client.put(client.writePolicyDefault, key, new Bin(SEGMENT_BIN_NAME,
                         String.join(",", segments.subList(0, ThreadLocalRandom.current().nextInt(1, segments.size())))));
             } else {
-                Operation[] operations =
-                        segments.subList(0, ThreadLocalRandom.current().nextInt(1, segments.size()))
-                                .stream()
-                                .map(com.aerospike.client.Value::get)
-                                .map(v -> ListOperation.append(POLICY, SEGMENT_BIN_NAME, v))
-                                .toArray(Operation[]::new);
+
+                String[] s = segments.subList(0, ThreadLocalRandom.current().nextInt(1, segments.size())).toArray(String[]::new);
+                Operation[] operations = AeroUtils.getAppendIfNotExistOperations(SEGMENT_BIN_NAME, s);
                 client.operate(client.writePolicyDefault, key, operations);
             }
 
@@ -134,13 +128,13 @@ public class ShellSupport {
         //generating load
         List<? extends ScheduledFuture<?>> load = IntStream.range(0, count * percent / 100)
                 .mapToObj(i -> ThreadLocalRandom.current().nextLong())
-                .map(i -> getKey(UUIDUtils.nameUUIDFromNamespaceAndString(UUIDUtils.NAMESPACE, i + "")))
+                .map(i -> AeroUtils.getKey(UUIDUtils.nameUUIDFromNamespaceAndString(UUIDUtils.NAMESPACE, i + "")))
                 .map(key ->
                         executorService.scheduleAtFixedRate(() -> client.get(client.readPolicyDefault, key),
                                 ThreadLocalRandom.current().nextLong((long) count * percent / 100000), 1, TimeUnit.SECONDS)
                 ).toList();
 
-        Key key = "NONE".equals(k) ? getKey(UUIDUtils.nameUUIDFromNamespaceAndString(UUIDUtils.NAMESPACE, ThreadLocalRandom.current().nextLong() + "")) : getKey(k);
+        Key key = "NONE".equals(k) ? AeroUtils.getKey(UUIDUtils.nameUUIDFromNamespaceAndString(UUIDUtils.NAMESPACE, ThreadLocalRandom.current().nextLong() + "")) : AeroUtils.getKey(k);
         System.out.println("Getting 60 reads metrics 1 times per second");
         long acumTime = 0;
         Thread.sleep(100);
@@ -151,11 +145,8 @@ public class ShellSupport {
             Thread.sleep(1000);
         }
         System.out.printf("avgTime of %s read-ops in a %s elements namespace with a %d percent of live load is %fms %n", 60, count, percent, (double) acumTime / 60);
-        load.forEach(f->f.cancel(true));
+        load.forEach(f -> f.cancel(true));
     }
 
 
-    private static Key getKey(String key){
-        return new Key(NAMESPACE, SET_NAME, key );
-    }
 }
