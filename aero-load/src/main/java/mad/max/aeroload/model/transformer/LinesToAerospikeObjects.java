@@ -46,6 +46,4 @@ public class LinesToAerospikeObjects extends AsyncProducer<Pair<Key, Operation[]
     public Key getKey(String keyString) {
         return new Key(parameters.namespace(), parameters.setName(), keyString);
     }
-
-
 }
