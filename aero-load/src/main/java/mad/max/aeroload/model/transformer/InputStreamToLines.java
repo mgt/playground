@@ -1,14 +1,13 @@
 package mad.max.aeroload.model.transformer;
 
+import lombok.AllArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.experimental.Delegate;
 import lombok.extern.slf4j.Slf4j;
-import mad.max.aeroload.model.base.N4ple;
-import mad.max.aeroload.model.base.Triad;
+import mad.max.aeroload.model.base.Pair;
 import mad.max.aeroload.model.consumer.base.AsyncConsumer;
 import mad.max.aeroload.model.producer.base.AsyncProducer;
 import mad.max.aeroload.model.producer.base.InputStreamMeta;
-import mad.max.aeroload.model.producer.base.LinesReaderConfigs;
 import mad.max.aeroload.utils.ThreadSleepUtils;
 import org.apache.commons.io.input.CountingInputStream;
 import org.springframework.util.Assert;
@@ -22,26 +21,26 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.zip.GZIPInputStream;
 
 @Slf4j
-public class InputStreamToLines extends AsyncProducer<Triad<String, String[], String>>
-        implements AsyncConsumer<N4ple<InputStreamMeta, LinesReadingParameters, LinesReaderConfigs, InputStream>> {
+public class InputStreamToLines extends AsyncProducer<Pair<String, String>>
+        implements AsyncConsumer<Pair<InputStreamMeta, InputStream>> {
 
     //No multiple extension in java, so implement + Delegate
     @Delegate
-    private final AsyncConsumer<N4ple<InputStreamMeta, LinesReadingParameters, LinesReaderConfigs, InputStream>> consumerImpl;
+    private final AsyncConsumer<Pair<InputStreamMeta, InputStream>> consumerImpl;
 
-    public InputStreamToLines(AsyncConsumer<Triad<String, String[], String>> producersConsumer) {
+    public InputStreamToLines(AsyncConsumer<Pair<String, String>> producersConsumer, LinesReadingParameters linesReadingParameters) {
         super(producersConsumer);
-        this.consumerImpl = new InputStreamConsumerDelegator();
-
+        this.consumerImpl = new InputStreamConsumerDelegator(linesReadingParameters);
     }
 
-    class InputStreamConsumerDelegator implements AsyncConsumer<N4ple<InputStreamMeta, LinesReadingParameters, LinesReaderConfigs, InputStream>> {
+
+    @AllArgsConstructor
+    class InputStreamConsumerDelegator implements AsyncConsumer<Pair<InputStreamMeta, InputStream>> {
+        private final LinesReadingParameters linesReadingParameters;
 
         @SneakyThrows
         @Override
-        public void accept(N4ple<InputStreamMeta, LinesReadingParameters, LinesReaderConfigs, InputStream> product, Observer observer) {
-            LinesReaderConfigs.ReadingConfig config = product.c().getReadingConfig();
-            LinesReadingParameters parameters = product.b();
+        public void accept(Pair<InputStreamMeta, InputStream> product, Observer observer) {
             String fileName = product.a().fileName();
             long lastReadLineNumber = -1;
             AtomicLong totalTime = new AtomicLong(0); //Keeps track of the total time spent in the process
@@ -52,10 +51,10 @@ public class InputStreamToLines extends AsyncProducer<Triad<String, String[], St
 
             long contentLength = product.a().contentLength();
             //Maybe we need to clean previous failure reports here
-            CountingInputStream cis = new CountingInputStream(product.d());
+            CountingInputStream cis = new CountingInputStream(product.b());
             InputStream is = cis;
-            if(product.c().getReadingConfig().isCompressed())
-                is= new GZIPInputStream(is);
+            if (linesReadingParameters.compressed())
+                is = new GZIPInputStream(is);
 
             try (LineNumberReader br = new LineNumberReader(new InputStreamReader(is, StandardCharsets.UTF_8))) {
 
@@ -65,41 +64,38 @@ public class InputStreamToLines extends AsyncProducer<Triad<String, String[], St
                     ThreadSleepUtils.sleepMaxTime();
                 }
 
-                if (config.hasHeader()) {// Skip reading 1st line of data file if it has a header
+                if (linesReadingParameters.hasHeader()) {// Skip reading 1st line of data file if it has a header
                     br.readLine();
                 }
 
                 String line;
-                while ((line = br.readLine()) != null && br.getLineNumber() >= parameters.start() && br.getLineNumber() <= parameters.limit()) {
+                while ((line = br.readLine()) != null && br.getLineNumber() >= linesReadingParameters.start() && br.getLineNumber() <= linesReadingParameters.limit()) {
                     log.trace("Read line {} from file:{} ", br.getLineNumber(), fileName);
-                    String[] fileColumns = line.split(config.delimiter());
 
                     final long totalProcessed = Math.max(errorCount.get() + okCount.get(), 1);
                     final long bytesRead = cis.getByteCount();
                     final long totalErrors = errorCount.get();
-                    final double bytesReadInErrors =  (double) totalErrors * bytesRead / totalProcessed;
+                    final double bytesReadInErrors = (double) totalErrors * bytesRead / totalProcessed;
                     final double threshold = bytesReadInErrors / contentLength * 100;
-                    Assert.isTrue(parameters.errorThreshold() > threshold, () -> "Current threshold %f is higher than configured %d".formatted( threshold, parameters.errorThreshold()));
+                    Assert.isTrue(linesReadingParameters.errorThreshold() > threshold,
+                            () -> "Current threshold %f is higher than configured %d".formatted(threshold, linesReadingParameters.errorThreshold()));
                     //Validate the line we read, we should be able to get at least the segment list
-                    if (!StringUtils.hasText(line) || fileColumns.length < config.segmentColumnIndexInFile()) {
+                    if (!StringUtils.hasText(line)) {
                         errorCount.incrementAndGet();
                         log.error("Error processing file {}: Line:{} ", fileName, br.getLineNumber());
                         continue;
                     }
 
-                    String keyString = fileColumns[0];
-                    String[] listString = fileColumns[config.segmentColumnIndexInFile()]
-                            .split(config.segmentDelimiter());
 
                     //Configuring observers for downStream, they are going to be called async
-                    InputStreamToLinesObserver observe = new InputStreamToLinesObserver(okCount, errorCount, totalTime, fileName, keyString,
-                            fileColumns[config.segmentColumnIndexInFile()], System.currentTimeMillis(), br.getLineNumber());
-                    InputStreamToLines.this.push(new Triad<>(keyString, listString, parameters.function().apply(fileName) ), observe);
+                    InputStreamToLinesObserver observe = new InputStreamToLinesObserver(okCount, errorCount, totalTime, fileName,
+                            line, System.currentTimeMillis(), br.getLineNumber());
+                    InputStreamToLines.this.push(new Pair<>(line, fileName), observe);
                     lastReadLineNumber = br.getLineNumber();
                 }
                 //Because I am an AsyncConsumer, my producer gave me an observer, so my duty is calling it to notify of success processing
                 if (okCount.get() + errorCount.get() == lastReadLineNumber)
-                   observer.onSuccess();
+                    observer.onSuccess();
             } catch (Exception e) {//Unrecoverable scenario
                 //given it's the last statement in the cycle probably we did not get to update
                 // lastReadLineNumber and the error occurred in the next line

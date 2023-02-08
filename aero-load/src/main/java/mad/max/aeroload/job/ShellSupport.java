@@ -28,10 +28,9 @@ import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 import static mad.max.aeroload.model.producer.base.LinesReaderConfigs.SEGMENT_BIN_NAME;
-import static mad.max.aeroload.model.transformer.LinesToAerospikeObjects.NAMESPACE;
 import static mad.max.aeroload.model.transformer.LinesToAerospikeObjects.POLICY;
-import static mad.max.aeroload.model.transformer.LinesToAerospikeObjects.SET_NAME;
-import static mad.max.aeroload.model.transformer.LinesToAerospikeObjects.getKey;
+import static mad.max.aeroload.service.LoadingService.NAMESPACE;
+import static mad.max.aeroload.service.LoadingService.SET_NAME;
 
 @Slf4j
 @ShellComponent
@@ -156,4 +155,7 @@ public class ShellSupport {
     }
 
 
+    private static Key getKey(String key){
+        return new Key(NAMESPACE, SET_NAME, key );
+    }
 }

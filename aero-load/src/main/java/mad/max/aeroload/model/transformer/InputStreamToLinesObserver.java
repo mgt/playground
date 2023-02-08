@@ -13,13 +13,13 @@ import java.util.function.Supplier;
 
 @Slf4j
 public record InputStreamToLinesObserver(AtomicLong okCount, AtomicLong errorCount, AtomicLong totalTime, String file,
-                                         String keyString, String fileColumn, long tick,
+                                         String line, long tick,
                                          long lineNumber) implements AsyncConsumer.Observer {
     public void onFail(String error) {
         long timeSpentOnOperate = System.currentTimeMillis() - tick;
         totalTime.addAndGet(timeSpentOnOperate);
         errorCount.getAndIncrement();
-        String f = String.format("%d\t%s\t%s\t%s%n", lineNumber, keyString, fileColumn, error);
+        String f = String.format("%d\t%s\t%s%n", lineNumber, error, line);
         log.error("Error processing file {}. {} ", file, f);
 
         writeReport(f);
@@ -38,8 +38,8 @@ public record InputStreamToLinesObserver(AtomicLong okCount, AtomicLong errorCou
         long timeSpentOnOperate = System.currentTimeMillis() - tick;
         totalTime.accumulateAndGet(timeSpentOnOperate, Math::addExact);
         okCount.incrementAndGet();
-        Supplier<String> l = () -> String.format("inserted record for file %s key:%s. took %d. Total inserted so far (%d/%d). avg time %f",
-                file, keyString, timeSpentOnOperate, okCount.get(), lineNumber, (double) totalTime.get() / lineNumber);
+        Supplier<String> l = () -> String.format("inserted record for file %s. took %d. Total inserted so far (%d/%d). avg time %f",
+                file,  timeSpentOnOperate, okCount.get(), lineNumber, (double) totalTime.get() / lineNumber);
         if (log.isTraceEnabled()) {
             if (lineNumber % 1000 == 0) {
                 log.trace(l.get());

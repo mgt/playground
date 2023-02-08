@@ -44,12 +44,12 @@ public class AerospikeAsyncOperateCaller extends AsyncConsumingTask<Pair<Key, Op
     });
 
 
-    public AerospikeAsyncOperateCaller(AerospikeClient client, LoadingProfile loadingProfile) {
-        super(loadingProfile.getMaxQueuedElements());
+    public AerospikeAsyncOperateCaller(AerospikeClient client, AerospikeParameters parameters) {
+        super(parameters.maxQueuedElements());
         this.client = client;
         this.counts = new Counts(System.currentTimeMillis());
-        this.maxThroughput = loadingProfile.getMaxThroughput();
-        this.throttles = new Throttles(Runtime.getRuntime().availableProcessors(), loadingProfile.getMaxParallelCommands());
+        this.maxThroughput = parameters.maxThroughput();
+        this.throttles = new Throttles(Runtime.getRuntime().availableProcessors(), parameters.maxParallelCommands());
     }
 
     protected void offer(AsyncDecorator<Pair<Key, Operation[]>> product) throws InterruptedException {
